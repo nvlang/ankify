@@ -67,8 +67,19 @@ struct AnkiNote {
     fields: HashMap<String, String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<NoteOptions>,
     #[serde(flatten)]
     rest: HashMap<String, serde_json::Value>,
+}
+
+/// Options for note creation.
+#[derive(Debug, Serialize)]
+struct NoteOptions {
+    #[serde(rename = "allowDuplicate")]
+    allow_duplicate: bool,
+    #[serde(rename = "duplicateScope")]
+    duplicate_scope: String,
 }
 
 /// AnkiConnect note structure for updates.
@@ -120,7 +131,9 @@ impl Client {
             tracing::info!("Connected to AnkiConnect version {}", version);
             Ok(version)
         } else {
-            Err(Error::anki_connect("Failed to get AnkiConnect version"))
+            Err(Error::anki_connect(response.error.unwrap_or_else(|| {
+                "Failed to get AnkiConnect version: no result or error returned".to_string()
+            })))
         }
     }
 
@@ -145,6 +158,10 @@ impl Client {
             model_name: card.model.clone(),
             fields: card.data.clone(),
             tags: card.tags.clone(),
+            options: Some(NoteOptions {
+                allow_duplicate: false,
+                duplicate_scope: "deck".to_string(),
+            }),
             rest: card.rest.clone(),
         };
 
@@ -160,7 +177,9 @@ impl Client {
             tracing::info!("Created card with ID {}", note_id);
             Ok(note_id.to_string())
         } else {
-            Err(Error::anki_connect("Failed to create card"))
+            Err(Error::anki_connect(response.error.unwrap_or_else(|| {
+                "Failed to create card: no result or error returned".to_string()
+            })))
         }
     }
 
@@ -180,7 +199,7 @@ impl Client {
         };
 
         let request = AnkiConnectRequest {
-            action: "updateNoteFields".to_string(),
+            action: "updateNote".to_string(), // Use updateNote instead of updateNoteFields
             version: 6,
             params: Some(UpdateNoteParams { note }),
         };
@@ -191,10 +210,12 @@ impl Client {
             tracing::info!("Updated card {}", anki_id);
             Ok(())
         } else {
-            Err(Error::anki_connect(format!(
-                "Failed to update card {}",
-                anki_id
-            )))
+            Err(Error::anki_connect(response.error.unwrap_or_else(|| {
+                format!(
+                    "Failed to update card {}: no result or error returned",
+                    anki_id
+                )
+            })))
         }
     }
 
@@ -220,10 +241,12 @@ impl Client {
             tracing::info!("Deleted card {}", anki_id);
             Ok(())
         } else {
-            Err(Error::anki_connect(format!(
-                "Failed to delete card {}",
-                anki_id
-            )))
+            Err(Error::anki_connect(response.error.unwrap_or_else(|| {
+                format!(
+                    "Failed to delete card {}: no result or error returned",
+                    anki_id
+                )
+            })))
         }
     }
 
@@ -244,7 +267,9 @@ impl Client {
         if let Some(deck_names) = response.result {
             Ok(deck_names)
         } else {
-            Err(Error::anki_connect("Failed to get deck names"))
+            Err(Error::anki_connect(response.error.unwrap_or_else(|| {
+                "Failed to get deck names: no result or error returned".to_string()
+            })))
         }
     }
 
@@ -277,10 +302,12 @@ impl Client {
             tracing::info!("Created deck '{}'", deck_name);
             Ok(())
         } else {
-            Err(Error::anki_connect(format!(
-                "Failed to create deck '{}'",
-                deck_name
-            )))
+            Err(Error::anki_connect(response.error.unwrap_or_else(|| {
+                format!(
+                    "Failed to create deck '{}': no result or error returned",
+                    deck_name
+                )
+            })))
         }
     }
 

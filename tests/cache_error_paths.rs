@@ -1,5 +1,5 @@
-use ankify_v2::cache::Cache;
-use ankify_v2::{Card, RenderFormat};
+use ankify::cache::Cache;
+use ankify::{Card, RenderFormat};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -59,10 +59,7 @@ mod cache_error_path_tests {
 
         // All should be create operations for new cards
         for operation in operations {
-            assert!(matches!(
-                operation,
-                ankify_v2::cache::Operation::Create { .. }
-            ));
+            assert!(matches!(operation, ankify::cache::Operation::Create { .. }));
         }
     }
 
@@ -121,12 +118,12 @@ mod cache_error_path_tests {
         assert_eq!(operations.len(), 1);
     }
 
-    #[test]
-    fn test_cache_operations_consistency() {
+    #[tokio::test]
+    async fn test_cache_operations_consistency() {
         let temp_dir = TempDir::new().unwrap();
         let aux_path = temp_dir.path().join("ankify.aux.json");
-        let mut cache = Cache::new(&aux_path).unwrap();
 
+        let mut cache = Cache::new(&aux_path).unwrap();
         let card = create_test_card("consistency-test", false);
 
         // First operation should be create
@@ -134,19 +131,20 @@ mod cache_error_path_tests {
         assert_eq!(operations1.len(), 1);
         assert!(matches!(
             &operations1[0],
-            ankify_v2::cache::Operation::Create { .. }
+            ankify::cache::Operation::Create { .. }
         ));
 
-        // Simulate the card being processed
-        cache.save().unwrap();
+        // Simulate the card being processed by saving its state to the cache
+        cache.save().await.unwrap();
 
         // Same card should result in skip operation (no changes)
         let operations2 = cache.plan_operations(&[card]).unwrap();
         assert_eq!(operations2.len(), 1);
-        assert!(matches!(
-            &operations2[0],
-            ankify_v2::cache::Operation::Skip { .. }
-        ));
+        assert!(
+            matches!(&operations2[0], ankify::cache::Operation::Skip { .. }),
+            "Expected Skip for consistency-test, got {:?}",
+            operations2[0]
+        );
     }
 
     #[test]
@@ -179,8 +177,8 @@ mod cache_error_path_tests {
         }
     }
 
-    #[test]
-    fn test_cache_multiple_save_load_cycles() {
+    #[tokio::test]
+    async fn test_cache_multiple_save_load_cycles() {
         let temp_dir = TempDir::new().unwrap();
         let aux_path = temp_dir.path().join("ankify.aux.json");
 
@@ -191,7 +189,11 @@ mod cache_error_path_tests {
             let mut cache = Cache::new(&aux_path).unwrap();
             let operations = cache.plan_operations(&[card.clone()]).unwrap();
             assert_eq!(operations.len(), 1);
-            cache.save().unwrap();
+            assert!(matches!(
+                &operations[0],
+                ankify::cache::Operation::Create { .. }
+            ));
+            cache.save().await.unwrap();
         }
 
         // Load cache again, should recognize existing card
@@ -199,10 +201,11 @@ mod cache_error_path_tests {
             let cache = Cache::new(&aux_path).unwrap();
             let operations = cache.plan_operations(&[card.clone()]).unwrap();
             assert_eq!(operations.len(), 1);
-            assert!(matches!(
-                &operations[0],
-                ankify_v2::cache::Operation::Skip { .. }
-            ));
+            assert!(
+                matches!(&operations[0], ankify::cache::Operation::Skip { .. }),
+                "Expected Skip after load for cycle-test, got {:?}",
+                operations[0]
+            );
         }
 
         // Modify card content, should detect update needed
@@ -218,8 +221,7 @@ mod cache_error_path_tests {
             // Should be update or create operation
             assert!(matches!(
                 &operations[0],
-                ankify_v2::cache::Operation::Update { .. }
-                    | ankify_v2::cache::Operation::Create { .. }
+                ankify::cache::Operation::Update { .. } | ankify::cache::Operation::Create { .. }
             ));
         }
     }

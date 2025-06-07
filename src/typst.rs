@@ -32,7 +32,7 @@ use tokio::process::Command;
 pub async fn extract_cards(typst_file: &Path) -> Result<Vec<Card>> {
     tracing::debug!("Extracting cards from {}", typst_file.display());
 
-    // Query Typst for card metadata
+    // Query Typst for card metadata using the correct selector <anki-card>
     let raw_cards = query_typst_metadata(typst_file, "anki-card").await?;
 
     if raw_cards.is_empty() {
@@ -102,13 +102,19 @@ pub async fn extract_config(typst_file: &Path) -> Result<TypstConfig> {
 
 /// Query Typst for metadata with a specific label.
 async fn query_typst_metadata(typst_file: &Path, label: &str) -> Result<Vec<serde_json::Value>> {
+    // Always use the selector in the form <label> (e.g., <anki-card>)
+    let selector = if label.starts_with('<') && label.ends_with('>') {
+        label.to_string()
+    } else {
+        format!("<{}>", label)
+    };
     let output = Command::new("typst")
         .args(&[
             "query",
             typst_file
                 .to_str()
                 .ok_or_else(|| Error::typst("Invalid file path encoding".to_string()))?,
-            &format!("<{}>", label),
+            &selector,
             "--field",
             "value",
         ])

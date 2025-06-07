@@ -465,7 +465,7 @@ async fn test_caching_behavior() -> Result<()> {
 
     // Simulate recording the card
     cache.record_creation(&card, "123456".to_string())?;
-    cache.save()?;
+    cache.save().await?;
 
     // Test that the same card doesn't create new operations
     let _operations_after = cache.plan_operations(&[card])?;

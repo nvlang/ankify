@@ -224,8 +224,12 @@ impl Cache {
     }
 
     /// Save the cache to the auxiliary file if it has been modified.
-    pub fn save(&mut self) -> Result<()> {
+    pub async fn save(&mut self) -> Result<()> {
         if !self.dirty {
+            tracing::debug!(
+                "Cache not dirty, skipping save for {}",
+                self.aux_file.display()
+            );
             return Ok(());
         }
 
@@ -234,13 +238,18 @@ impl Cache {
 
         // Ensure parent directory exists
         if let Some(parent) = self.aux_file.parent() {
-            std::fs::create_dir_all(parent)?;
+            tokio::fs::create_dir_all(parent).await?;
         }
 
         // Write atomically by writing to a temporary file first
         let temp_file = self.aux_file.with_extension("tmp");
-        std::fs::write(&temp_file, json)?;
-        std::fs::rename(&temp_file, &self.aux_file)?;
+        tracing::debug!(
+            "Writing aux file to {} (tmp: {})",
+            self.aux_file.display(),
+            temp_file.display()
+        );
+        tokio::fs::write(&temp_file, json).await?;
+        tokio::fs::rename(&temp_file, &self.aux_file).await?;
 
         self.dirty = false;
         tracing::debug!("Saved cache to {}", self.aux_file.display());
@@ -284,6 +293,14 @@ impl Cache {
             dirty: self.dirty,
             file_path: self.aux_file.clone(),
         }
+    }
+
+    /// Returns the path to the media directory used by this cache.
+    pub fn media_dir(&self) -> std::path::PathBuf {
+        self.aux_file
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("media")
     }
 }
 
@@ -422,8 +439,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_cache_save_and_load() {
+    #[tokio::test]
+    async fn test_cache_save_and_load() {
         let temp_file = NamedTempFile::new().unwrap();
         let temp_path = temp_file.path().to_path_buf();
 
@@ -432,7 +449,7 @@ mod tests {
             let mut cache = Cache::new(&temp_path).unwrap();
             let card = create_test_card("test-card", "Content");
             cache.record_creation(&card, "test-id".to_string()).unwrap();
-            cache.save().unwrap();
+            cache.save().await.unwrap();
         }
 
         // Load cache in new instance

@@ -71,7 +71,7 @@ spec:
 // - target field name (e.g. "Front" or "Back" or any other field in the card model)
 //
 // returns:
-// - rendered content (e.g. HTML, SVG, PNG, or plain text, depending on the card's `format` field)
+// - rendered content (if HTML or plain text), or path to temp file containing rendered content (if SVG or PNG), depending on the card's `format` field
 //
 // ---
 //
@@ -111,3 +111,214 @@ spec:
 //   ...
 // ]
 ```
+
+### Relevant AnkiConnect API
+
+#### `addNote`
+
+Creates a note using the given deck and model, with the provided field values and tags. Returns the identifier of the created note created on success, and null on failure.
+
+Anki-Connect can download audio, video, and picture files and embed them in newly created notes. The corresponding audio, video, and picture note members are optional and can be omitted. If you choose to include any of them, they should contain a single object or an array of objects with the mandatory filename field and one of data, path or url. Refer to the documentation of storeMediaFile for an explanation of these fields. The skipHash field can be optionally provided to skip the inclusion of files with an MD5 hash that matches the provided value. This is useful for avoiding the saving of error pages and stub files. The fields member is a list of fields that should play audio or video, or show a picture when the card is displayed in Anki. The allowDuplicate member inside options group can be set to true to enable adding duplicate cards. Normally duplicate cards can not be added and trigger exception.
+
+The duplicateScope member inside options can be used to specify the scope for which duplicates are checked. A value of "deck" will only check for duplicates in the target deck; any other value will check the entire collection.
+
+The duplicateScopeOptions object can be used to specify some additional settings:
+    duplicateScopeOptions.deckName will specify which deck to use for checking duplicates in. If undefined or null, the target deck will be used.
+    duplicateScopeOptions.checkChildren will change whether or not duplicate cards are checked in child decks. The default value is false.
+    duplicateScopeOptions.checkAllModels specifies whether duplicate checks are performed across all note types. The default value is false.
+
+Sample request:
+
+```json
+{
+    "action": "addNote",
+    "version": 6,
+    "params": {
+        "note": {
+            "deckName": "Default",
+            "modelName": "Basic",
+            "fields": {
+                "Front": "front content",
+                "Back": "back content"
+            },
+            "options": {
+                "allowDuplicate": false,
+                "duplicateScope": "deck",
+                "duplicateScopeOptions": {
+                    "deckName": "Default",
+                    "checkChildren": false,
+                    "checkAllModels": false
+                }
+            },
+            "tags": [
+                "yomichan"
+            ],
+            "audio": [{
+                "url": "https://assets.languagepod101.com/dictionary/japanese/audiomp3.php?kanji=猫&kana=ねこ",
+                "filename": "yomichan_ねこ_猫.mp3",
+                "skipHash": "7e2c2f954ef6051373ba916f000168dc",
+                "fields": [
+                    "Front"
+                ]
+            }],
+            "video": [{
+                "url": "https://cdn.videvo.net/videvo_files/video/free/2015-06/small_watermarked/Contador_Glam_preview.mp4",
+                "filename": "countdown.mp4",
+                "skipHash": "4117e8aab0d37534d9c8eac362388bbe",
+                "fields": [
+                    "Back"
+                ]
+            }],
+            "picture": [{
+                "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/A_black_cat_named_Tilly.jpg/220px-A_black_cat_named_Tilly.jpg",
+                "filename": "black_cat.jpg",
+                "skipHash": "8d6e4646dfae812bf39651b59d7429ce",
+                "fields": [
+                    "Back"
+                ]
+            }]
+        }
+    }
+}
+```
+
+Sample result:
+
+```json
+{
+    "result": 1496198395707,
+    "error": null
+}
+```
+
+
+#### `updateNoteFields`
+
+Modify the fields of an existing note. You can also include audio, video, or picture files which will be added to the note with an optional audio, video, or picture property. Please see the documentation for addNote for an explanation of objects in the audio, video, or picture array.
+
+    Warning: You must not be viewing the note that you are updating on your Anki browser, otherwise the fields will not update. See this issue for further details.
+
+Sample request:
+
+```json
+{
+    "action": "updateNoteFields",
+    "version": 6,
+    "params": {
+        "note": {
+            "id": 1514547547030,
+            "fields": {
+                "Front": "new front content",
+                "Back": "new back content"
+            },
+            "audio": [{
+                "url": "https://assets.languagepod101.com/dictionary/japanese/audiomp3.php?kanji=猫&kana=ねこ",
+                "filename": "yomichan_ねこ_猫.mp3",
+                "skipHash": "7e2c2f954ef6051373ba916f000168dc",
+                "fields": [
+                    "Front"
+                ]
+            }]
+        }
+    }
+}
+```
+
+Sample result:
+
+```json
+{
+    "result": null,
+    "error": null
+}
+```
+
+#### `updateNoteTags`
+
+Set a note's tags by note ID. Old tags will be removed.
+
+Sample request:
+
+```json
+{
+    "action": "updateNoteTags",
+    "version": 6,
+    "params": {
+        "note": 1483959289817,
+        "tags": ["european-languages"]
+    }
+}
+```
+
+Sample result:
+
+```json
+{
+    "result": null,
+    "error": null
+}
+```
+
+#### `updateNote`
+
+Modify the fields and/or tags of an existing note. In other words, combines updateNoteFields and updateNoteTags. Please see their documentation for an explanation of all properties.
+
+Either fields or tags property can be omitted without affecting the other. Thus valid requests to updateNoteFields also work with updateNote. The note must have the fields property in order to update the optional audio, video, or picture objects.
+
+If neither fields nor tags are provided, the method will fail. Fields are updated first and are not rolled back if updating tags fails. Tags are not updated if updating fields fails.
+
+    Warning You must not be viewing the note that you are updating on your Anki browser, otherwise the fields will not update. See this issue for further details.
+
+Sample request:
+
+```json
+{
+    "action": "updateNote",
+    "version": 6,
+    "params": {
+        "note": {
+            "id": 1514547547030,
+            "fields": {
+                "Front": "new front content",
+                "Back": "new back content"
+            },
+            "tags": ["new", "tags"]
+        }
+    }
+}
+```
+
+Sample result:
+
+```json
+{
+    "result": null,
+    "error": null
+}
+```
+
+#### `deleteNotes`
+
+Deletes notes with the given ids. If a note has several cards associated with it, all associated cards will be deleted.
+
+Sample request:
+
+```json
+{
+    "action": "deleteNotes",
+    "version": 6,
+    "params": {
+        "notes": [1502298033753]
+    }
+}
+```
+
+Sample result:
+
+```json
+{
+    "result": null,
+    "error": null
+}
+```
+

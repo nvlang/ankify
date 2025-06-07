@@ -128,18 +128,24 @@ impl Ankify {
 
         // Extract cards from all matching files
         let cards = self.extract_all_cards().await?;
-        info!(
-            "Extracted {} cards from {} files",
+        println!(
+            "[DEBUG] Extracted {} cards from {} files",
             cards.len(),
             self.get_matching_files()?.len()
         );
 
         // Determine what operations need to be performed
         let operations = self.cache.plan_operations(&cards)?;
-        info!("Planned {} operations", operations.len());
+        println!("[DEBUG] Planned {} operations", operations.len());
+        for (i, op) in operations.iter().enumerate() {
+            println!("[DEBUG] Operation {}: {:?}", i, op);
+        }
 
         // Execute operations
         self.execute_operations(operations).await?;
+
+        // Save cache to persist changes
+        self.cache.save().await?;
 
         info!("File processing complete");
         Ok(())
@@ -168,6 +174,9 @@ impl Ankify {
 
         // Execute operations
         self.execute_operations(operations).await?;
+
+        // Save cache to persist changes
+        self.cache.save().await?;
 
         info!(?file_path, "File processing complete");
         Ok(())
@@ -258,7 +267,7 @@ impl Ankify {
             }
         }
 
-        self.cache.save()?;
+        self.cache.save().await?;
         Ok(())
     }
 

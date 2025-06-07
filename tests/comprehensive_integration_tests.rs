@@ -309,13 +309,13 @@ mod fuzzing_tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Generate random Typst-like content to test parsing robustness
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         for _ in 0..10 {
             let random_content = generate_random_typst_content(&mut rng);
             let typst_file = temp_dir
                 .path()
-                .join(format!("random_{}.typ", rng.gen::<u32>()));
+                .join(format!("random_{}.typ", rng.random::<u32>()));
             fs::write(&typst_file, random_content).await.unwrap();
 
             // Test that the system handles arbitrary Typst content gracefully
@@ -336,11 +336,11 @@ mod fuzzing_tests {
             r#""#.to_string(), // Empty file
             format!(
                 "#card(\"{}\", data: ())",
-                "x".repeat(rng.gen_range(1..1000))
+                "x".repeat(rng.random_range(1..1000))
             ), // Long labels
         ];
 
-        templates[rng.gen_range(0..templates.len())].clone()
+        templates[rng.random_range(0..templates.len())].clone()
     }
 
     #[tokio::test]

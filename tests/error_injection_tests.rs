@@ -74,7 +74,7 @@ mod error_injection_tests {
             let _ = fs::set_permissions(parent_dir, perms).await;
 
             // Try to save - should handle errors gracefully
-            let result = cache.save();
+            let result = cache.save().await;
             match result {
                 Ok(_) => {
                     // If it succeeds, that's fine too
