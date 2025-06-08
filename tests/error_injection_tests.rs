@@ -1,6 +1,6 @@
 use ankify::cache::Cache;
 use ankify::render::Renderer;
-use ankify::{Card, RenderFormat, RenderedCard};
+use ankify::{Card, FieldFormat, RenderFormat, RenderedCard};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -26,7 +26,7 @@ mod error_injection_tests {
             deck: "Test Deck".to_string(),
             tags: vec!["test".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: PathBuf::from("test.typ"),
         }
     }
@@ -140,14 +140,14 @@ mod error_injection_tests {
                 deck: "Test".to_string(),
                 tags,
                 rest: HashMap::new(),
-                format: RenderFormat::Svg,
+                format: RenderFormat::Single(FieldFormat::Svg),
                 source_file: PathBuf::from("test.typ"),
             };
 
             // Should not panic or return empty hash
             let hash = card.content_hash();
             assert!(!hash.is_empty());
-            assert_eq!(hash.len(), 32); // MD5 hash should be 32 chars
+            assert_eq!(hash.len(), 64); // SHA-256 hash should be 64 chars
         }
     }
 
@@ -165,6 +165,7 @@ mod error_injection_tests {
             rest: HashMap::new(),
             label: "test-card".to_string(),
             source_file: PathBuf::from("test.typ"),
+            media_files: HashMap::new(),
         };
 
         assert_eq!(rendered_card.label, "test-card");
@@ -179,10 +180,10 @@ mod error_injection_tests {
     fn test_render_format_enum() {
         // Test all variants of RenderFormat
         let formats = vec![
-            RenderFormat::Svg,
-            RenderFormat::Png,
-            RenderFormat::Html,
-            RenderFormat::Plain,
+            RenderFormat::Single(FieldFormat::Svg),
+            RenderFormat::Single(FieldFormat::Png),
+            RenderFormat::Single(FieldFormat::Html),
+            RenderFormat::Single(FieldFormat::Plain),
         ];
 
         for format in formats {
@@ -196,14 +197,14 @@ mod error_injection_tests {
 
         // Test default
         let default_format = RenderFormat::default();
-        assert!(matches!(default_format, RenderFormat::Svg));
+        assert!(matches!(
+            default_format,
+            RenderFormat::Single(FieldFormat::Svg)
+        ));
     }
 
     #[tokio::test]
     async fn test_network_error_simulation() {
-        // Start a mock server for testing network errors
-        let mock_server = MockServer::start().await;
-
         // Test various HTTP error scenarios
         let error_scenarios = vec![
             (500, "Internal Server Error"),
@@ -214,6 +215,9 @@ mod error_injection_tests {
         ];
 
         for (status_code, error_msg) in error_scenarios {
+            // Start a fresh mock server for each test scenario
+            let mock_server = MockServer::start().await;
+
             // Set up mock to return error
             Mock::given(method("POST"))
                 .and(path("/"))
@@ -251,7 +255,7 @@ mod error_injection_tests {
                 deck: "Large Test Deck".to_string(),
                 tags: vec![format!("tag-{}", i % 10)],
                 rest: HashMap::new(),
-                format: RenderFormat::Svg,
+                format: RenderFormat::Single(FieldFormat::Svg),
                 source_file: PathBuf::from("test.typ"),
             };
             cards.push(card);

@@ -1,6 +1,6 @@
 use ankify::cache::Cache;
 use ankify::render::Renderer;
-use ankify::{Card, RenderFormat};
+use ankify::{Card, RenderFormat, FieldFormat};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -21,7 +21,7 @@ mod typst_error_path_tests {
             deck: "Test Deck".to_string(),
             tags: vec!["test".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: PathBuf::from("test.typ"),
         }
     }
@@ -77,7 +77,7 @@ mod typst_error_path_tests {
                 deck: "Test Deck".to_string(),
                 tags: vec!["test".to_string()],
                 rest: HashMap::new(),
-                format: RenderFormat::Svg,
+                format: RenderFormat::Single(FieldFormat::Svg),
                 source_file: PathBuf::from(source_path),
             };
 
@@ -98,16 +98,17 @@ mod typst_error_path_tests {
     #[test]
     fn test_render_format_edge_cases() {
         let formats_with_problematic_content = vec![
-            (RenderFormat::Svg, "content with <svg> tags"),
-            (RenderFormat::Png, "content with binary\0data"),
+            (RenderFormat::Single(FieldFormat::Svg), "content with <svg> tags"),
+            (RenderFormat::Single(FieldFormat::Png), "content with binary\0data"),
             (
-                RenderFormat::Html,
+                RenderFormat::Single(FieldFormat::Html),
                 "content with <script>alert('xss')</script>",
             ),
-            (RenderFormat::Plain, "plain text\nwith\nnewlines\tand\ttabs"),
+            (RenderFormat::Single(FieldFormat::Plain), "plain text\nwith\nnewlines\tand\ttabs"),
         ];
 
         for (format, content) in formats_with_problematic_content {
+            let format_clone = format.clone();
             let card = Card {
                 label: "format-test".to_string(),
                 model: "Basic".to_string(),
@@ -123,7 +124,7 @@ mod typst_error_path_tests {
             };
 
             // Card creation should succeed regardless of content
-            assert_eq!(card.format, format);
+            assert_eq!(card.format, format_clone);
             assert_eq!(card.data.get("Front").unwrap(), content);
         }
     }
@@ -225,7 +226,7 @@ mod typst_error_path_tests {
                 deck: "".to_string(),
                 tags: vec![],
                 rest: HashMap::new(),
-                format: RenderFormat::Plain,
+                format: RenderFormat::Single(FieldFormat::Plain),
                 source_file: PathBuf::from(""),
             },
             // Card with unicode content
@@ -239,7 +240,7 @@ mod typst_error_path_tests {
                 deck: "Unicode Deck 📚".to_string(),
                 tags: vec!["unicode 🏷️".to_string()],
                 rest: HashMap::new(),
-                format: RenderFormat::Svg,
+                format: RenderFormat::Single(FieldFormat::Svg),
                 source_file: PathBuf::from("unicode.typ"),
             },
             // Card with very long content
@@ -253,7 +254,7 @@ mod typst_error_path_tests {
                 deck: "Long Content Deck".to_string(),
                 tags: vec!["long".to_string()],
                 rest: HashMap::new(),
-                format: RenderFormat::Html,
+                format: RenderFormat::Single(FieldFormat::Html),
                 source_file: PathBuf::from("long.typ"),
             },
         ];

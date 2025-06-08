@@ -25,6 +25,7 @@ spec:
 // - tags: list of str (tags to add to the card; this will be passed to the AnkiConnect API as "tags")
 // - rest: additional metadata that may be added by the user, and which should be passed as-is to AnkiConnect: `"params": { "note": { ..., <pass rest> }, ... }`
 // - format: str (should be "svg", "png", "html", or "plain"; default should be "svg"). this will determine how the card content is rendered before being passed to Anki. e.g., if the format is "svg", the content will be rendered as an SVG image with Typst. If "plain", it won't be rendered by Typst at all, and just passed to Anki as-is.
+//    TODO: also allow `format` to be a dictionary with field names as keys and formats as values, e.g. `{"Front": "svg", "Back": "plain"}`. this allows different fields in the same card to have different formats.
 //
 // additionally, for each card, keep track of the `.typ` file path in which it was found, so that the user can easily find the source of the card, and so that import paths in the card's content can be resolved correctly in the rendering stage. this should be an additional field in the card object, e.g. `source_file: str`.
 //
@@ -43,16 +44,29 @@ spec:
 //
 // returns:
 // - array of AnkiConnect API calls to make
+// - rendering queue for new cards that need to be rendered
 //
 // ---
 //
-// 1. compute hash of each card source content (e.g. the concatenation of all fields in the card (except `label`), including `model`, `deck`, `tags`, and `rest`).
+// 1. compute hash of each card source content (e.g. the concatenation of all fields in the card (except `label`), including `data`, `model`, `deck`, `tags`, and `rest`).
 // 1. check auxiliary file for existing cards by comparing both label and hash.
-// 1. if neither hash nor label match, add AnkiConnect API call to create a new card in Anki to return array
+// 1. if neither hash nor label match, add AnkiConnect API call to create a new card in Anki
 // 1. if label matches but hash doesn't, add AnkiConnect API call to update the card in Anki and update the auxiliary file
 // 1. if label doesn't match but hash matches exactly one entry in the auxiliary file, update the label in the auxiliary file to match the new label
 // 1. if both label and hash match, do nothing (no need to update Anki or auxiliary file)
 // 1. if aux file contains a card ID that doesn't match any label or hash, add an AnkiConnect API call to delete the card from Anki
+// 
+// TODO: if a field's format is SVG or PNG, proceed as follows:
+//   1.  the field should be put in the `params > note > fields` object with `""` as a value.
+//   1.  add the following to the request:
+//
+//       ```
+//       "picture": [{
+//           "data": "base64-encoded SVG or PNG content",
+//           "filename": "<card label>-<field name>.<format>", // e.g. "def-open-set-Front.svg"
+//           "fields": ["<field name>"] // e.g. ["Front"]
+//       }]
+//       ```
 //
 // auxiliary json file structure:
 // [
@@ -71,7 +85,7 @@ spec:
 // - target field name (e.g. "Front" or "Back" or any other field in the card model)
 //
 // returns:
-// - rendered content (if HTML or plain text), or path to temp file containing rendered content (if SVG or PNG), depending on the card's `format` field
+// TODO: - rendered content (if HTML or plain text), or base64-encoding of rendered content (if SVG or PNG), depending on the card's `format` field
 //
 // ---
 //

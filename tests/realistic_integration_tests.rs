@@ -7,7 +7,7 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 
-use ankify::{Ankify, CardDefaults, Config, RenderFormat, Result};
+use ankify::{Ankify, CardDefaults, Config, FieldFormat, RenderFormat, Result};
 /// Helper function to set up a test directory with fixtures and ankify.typ
 async fn setup_test_with_fixture(
     temp_dir: &TempDir,
@@ -135,7 +135,7 @@ mod fixtures_integration_tests {
             cache_dir: temp_dir.path().join("cache"),
             defaults: CardDefaults::default(),
             watch: false,
-            render_format: RenderFormat::Html,
+            render_format: RenderFormat::Single(FieldFormat::Html),
         };
 
         let mut ankify = Ankify::new(config).await?;
@@ -185,7 +185,7 @@ mod fixtures_integration_tests {
             cache_dir: temp_dir.path().join("cache"),
             defaults: CardDefaults::default(),
             watch: false,
-            render_format: RenderFormat::Html,
+            render_format: RenderFormat::Single(FieldFormat::Html),
         };
 
         let mut ankify = Ankify::new(config).await?;
@@ -229,7 +229,7 @@ mod fixtures_integration_tests {
             cache_dir: temp_dir.path().join("cache"),
             defaults: CardDefaults::default(),
             watch: false,
-            render_format: RenderFormat::Html,
+            render_format: RenderFormat::Single(FieldFormat::Html),
         };
 
         let mut ankify = Ankify::new(config).await?;
@@ -278,7 +278,7 @@ mod fixtures_integration_tests {
             cache_dir: temp_dir.path().join("cache"),
             defaults: CardDefaults::default(),
             watch: false,
-            render_format: RenderFormat::Html,
+            render_format: RenderFormat::Single(FieldFormat::Html),
         };
 
         let mut ankify = Ankify::new(config).await?;
@@ -322,7 +322,7 @@ mod fixtures_integration_tests {
             cache_dir: temp_dir.path().join("cache"),
             defaults: CardDefaults::default(),
             watch: false,
-            render_format: RenderFormat::Html,
+            render_format: RenderFormat::Single(FieldFormat::Html),
         };
 
         let mut ankify = Ankify::new(config).await?;
@@ -363,7 +363,7 @@ mod fixtures_integration_tests {
             cache_dir: temp_dir.path().join("cache"),
             defaults: CardDefaults::default(),
             watch: false,
-            render_format: RenderFormat::Html,
+            render_format: RenderFormat::Single(FieldFormat::Html),
         };
 
         let mut ankify = Ankify::new(config).await?;
@@ -380,7 +380,7 @@ mod fixtures_integration_tests {
             cache_dir: temp_dir.path().join("cache"),
             defaults: CardDefaults::default(),
             watch: false,
-            render_format: RenderFormat::Html,
+            render_format: RenderFormat::Single(FieldFormat::Html),
         };
 
         let mut ankify = Ankify::new(config).await?;
@@ -420,7 +420,7 @@ mod fixtures_integration_tests {
             cache_dir: temp_dir.path().join("cache"),
             defaults: CardDefaults::default(),
             watch: false,
-            render_format: RenderFormat::Html,
+            render_format: RenderFormat::Single(FieldFormat::Html),
         };
 
         let mut ankify = Ankify::new(config).await?;

@@ -66,12 +66,15 @@ pub struct RenderedCard {
 
     /// Source file where this card was defined
     pub source_file: PathBuf,
+
+    /// Media files associated with fields (field_name -> file_path)
+    pub media_files: HashMap<String, String>,
 }
 
-/// Supported rendering formats for card content.
+/// Individual rendering format for a field.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum RenderFormat {
+pub enum FieldFormat {
     /// Render as SVG image using Typst
     Svg,
     /// Render as PNG image using Typst
@@ -82,9 +85,69 @@ pub enum RenderFormat {
     Plain,
 }
 
+impl Default for FieldFormat {
+    fn default() -> Self {
+        FieldFormat::Svg
+    }
+}
+
+/// Supported rendering formats for card content.
+/// Can be either a single format applied to all fields or field-specific formats.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum RenderFormat {
+    /// Single format applied to all fields
+    Single(FieldFormat),
+    /// Field-specific formats
+    PerField(HashMap<String, FieldFormat>),
+}
+
 impl Default for RenderFormat {
     fn default() -> Self {
-        RenderFormat::Svg
+        RenderFormat::Single(FieldFormat::Svg)
+    }
+}
+
+impl RenderFormat {
+    /// Get the format for a specific field
+    pub fn get_format_for_field(&self, field_name: &str) -> FieldFormat {
+        match self {
+            RenderFormat::Single(format) => *format,
+            RenderFormat::PerField(formats) => formats.get(field_name).copied().unwrap_or_default(),
+        }
+    }
+
+    /// Check if any field uses SVG or PNG format (requires media file handling)
+    pub fn has_media_fields(&self) -> bool {
+        match self {
+            RenderFormat::Single(format) => matches!(format, FieldFormat::Svg | FieldFormat::Png),
+            RenderFormat::PerField(formats) => formats
+                .values()
+                .any(|format| matches!(format, FieldFormat::Svg | FieldFormat::Png)),
+        }
+    }
+
+    /// Get all fields that use SVG or PNG format
+    pub fn get_media_fields(&self, field_names: &[String]) -> Vec<String> {
+        match self {
+            RenderFormat::Single(format) => {
+                if matches!(format, FieldFormat::Svg | FieldFormat::Png) {
+                    field_names.to_vec()
+                } else {
+                    Vec::new()
+                }
+            }
+            RenderFormat::PerField(formats) => formats
+                .iter()
+                .filter_map(|(field, format)| {
+                    if matches!(format, FieldFormat::Svg | FieldFormat::Png) {
+                        Some(field.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        }
     }
 }
 
@@ -255,6 +318,7 @@ impl From<Card> for RenderedCard {
             rest: card.rest,
             label: card.label,
             source_file: card.source_file,
+            media_files: HashMap::new(),
         }
     }
 }
@@ -276,7 +340,7 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec!["tag1".to_string(), "tag2".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: PathBuf::from("test.typ"),
         };
 
@@ -291,7 +355,7 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec!["tag2".to_string(), "tag1".to_string()], // Different order shouldn't affect hash
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: PathBuf::from("different.typ"), // Different source file shouldn't affect hash
         };
 
@@ -307,7 +371,7 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec![],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: PathBuf::from("test.typ"),
         };
 

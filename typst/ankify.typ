@@ -99,32 +99,39 @@
   let card_data = (
     label: label,
     data: data,
+    model: model,
+    deck: deck,
+    tags: tags,
+    rest: rest,
+    format: format
   )
   
   // Add optional fields if provided
   if model != none {
-    assert(type(model) == str, message: "Model must be a string")
+    assert(type(model) == str, message: "`model` must be a string")
     card_data.insert("model", model)
   }
   
   if deck != none {
-    assert(type(deck) == str, message: "Deck must be a string") 
+    assert(type(deck) == str, message: "`deck` must be a string") 
     card_data.insert("deck", deck)
   }
   
   if tags != none {
-    assert(type(tags) == array, message: "Tags must be an array")
+    assert(type(tags) == array, message: "`tags` must be an array")
     card_data.insert("tags", tags)
   }
   
   if rest != none {
-    assert(type(rest) == dictionary, message: "Rest must be a dictionary")
+    assert(type(rest) == dictionary, message: "`rest` must be a dictionary")
     card_data.insert("rest", rest)
   }
   
   if format != none {
-    assert(type(format) == str, message: "Format must be a string")
-    assert(format in ("svg", "png", "html", "plain"), message: "Format must be one of: svg, png, html, plain")
+    assert(type(format) == str or type(format) == dictionary, message: "`format` must be a string or dictionary")
+    if type(format) == str {
+      assert(format in ("svg", "png", "html", "plain"), message: "`format` must be a dictionary or one of: svg, png, html, plain")
+    }
     card_data.insert("format", format)
   }
   

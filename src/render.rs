@@ -5,14 +5,15 @@
 //! format conversion with proper error handling and resource management.
 
 use crate::error::{Error, Result};
-use crate::types::{Card, RenderFormat, RenderedCard};
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use base64::Engine;
+use crate::types::{Card, FieldFormat, RenderedCard};
+#[cfg(test)]
+use crate::types::RenderFormat;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::fs;
 use tracing::{debug, info, instrument, warn};
+use base64::{engine::general_purpose, Engine as _};
 
 /// Card content renderer
 ///
@@ -70,7 +71,7 @@ impl Renderer {
     ///
     /// # Returns
     ///
-    /// Returns the rendered content as a string.
+    /// Returns the rendered content as a string, or path to temp file for SVG/PNG formats.
     ///
     /// # Errors
     ///
@@ -80,25 +81,25 @@ impl Renderer {
         &self,
         card: &Card,
         field_name: &str,
-        format: RenderFormat,
+        format: FieldFormat,
         render_function_path: Option<&Path>,
     ) -> Result<String> {
         debug!(label = %card.label, field = field_name, ?format, "Rendering card field");
 
         match format {
-            RenderFormat::Svg => {
+            FieldFormat::Svg => {
                 self.render_field_to_svg(card, field_name, render_function_path)
                     .await
             }
-            RenderFormat::Png => {
+            FieldFormat::Png => {
                 self.render_field_to_png(card, field_name, render_function_path)
                     .await
             }
-            RenderFormat::Html => {
+            FieldFormat::Html => {
                 self.render_field_to_html(card, field_name, render_function_path)
                     .await
             }
-            RenderFormat::Plain => self.render_field_to_plain(card, field_name),
+            FieldFormat::Plain => self.render_field_to_plain(card, field_name),
         }
     }
 
@@ -124,8 +125,9 @@ impl Renderer {
 
         // Render each field in the card data
         for (field_name, _) in &card.data {
+            let field_format = card.format.get_format_for_field(field_name);
             let rendered_content = self
-                .render_field(card, field_name, card.format, render_function_path)
+                .render_field(card, field_name, field_format, render_function_path)
                 .await?;
             rendered_data.insert(field_name.clone(), rendered_content);
         }
@@ -138,6 +140,7 @@ impl Renderer {
             rest: card.rest.clone(),
             label: card.label.clone(),
             source_file: card.source_file.clone(),
+            media_files: HashMap::new(), // Will be populated by AnkiConnect integration
         })
     }
 
@@ -186,7 +189,10 @@ impl Renderer {
         let temp_file = self
             .create_temp_typst_file(card, field_name, render_function_path.unwrap())
             .await?;
-        let output_file = temp_file.with_extension("svg");
+        
+        // Create output file with unique name based on card label and field
+        let output_filename = format!("{}-{}.svg", card.label, field_name);
+        let output_file = self.temp_dir.join(output_filename);
 
         let output = Command::new(&self.typst_binary)
             .args(["compile", "--format", "svg"])
@@ -203,10 +209,19 @@ impl Renderer {
             )));
         }
 
-        let svg_content = fs::read_to_string(&output_file).await?;
-        self.cleanup_temp_files(&[temp_file, output_file]).await?;
+        // Clean up temporary typst file but keep the SVG output file
+        self.cleanup_temp_files(&[temp_file]).await?;
 
-        Ok(svg_content)
+        // Read the SVG file and encode as base64
+        let svg_content = fs::read(&output_file).await
+            .map_err(|e| Error::render(format!("Failed to read SVG file: {}", e)))?;
+        let base64_content = general_purpose::STANDARD.encode(&svg_content);
+
+        // Clean up the SVG file
+        self.cleanup_temp_files(&[output_file]).await?;
+
+        // Return the base64 encoded content
+        Ok(base64_content)
     }
 
     /// Render a card field to PNG format
@@ -224,7 +239,10 @@ impl Renderer {
         let temp_file = self
             .create_temp_typst_file(card, field_name, render_function_path.unwrap())
             .await?;
-        let output_file = temp_file.with_extension("png");
+        
+        // Create output file with unique name based on card label and field
+        let output_filename = format!("{}-{}.png", card.label, field_name);
+        let output_file = self.temp_dir.join(output_filename);
 
         let output = Command::new(&self.typst_binary)
             .args(["compile", "--format", "png", "--ppi", "300"])
@@ -241,10 +259,18 @@ impl Renderer {
             )));
         }
 
-        let png_content = fs::read(&output_file).await?;
-        let base64_content = BASE64_STANDARD.encode(&png_content);
-        self.cleanup_temp_files(&[temp_file, output_file]).await?;
+        // Clean up temporary typst file but keep the PNG output file
+        self.cleanup_temp_files(&[temp_file]).await?;
 
+        // Read the PNG file and encode as base64
+        let png_content = fs::read(&output_file).await
+            .map_err(|e| Error::render(format!("Failed to read PNG file: {}", e)))?;
+        let base64_content = general_purpose::STANDARD.encode(&png_content);
+
+        // Clean up the PNG file
+        self.cleanup_temp_files(&[output_file]).await?;
+
+        // Return the base64 encoded content
         Ok(base64_content)
     }
 
@@ -309,12 +335,7 @@ impl Renderer {
             card.deck,
             serde_json::to_string(&card.tags).unwrap_or_else(|_| "()".to_string()),
             serde_json::to_string(&card.rest).unwrap_or_else(|_| "()".to_string()),
-            match card.format {
-                RenderFormat::Svg => "svg",
-                RenderFormat::Png => "png",
-                RenderFormat::Html => "html",
-                RenderFormat::Plain => "plain",
-            },
+            serde_json::to_string(&card.format).unwrap_or_else(|_| "\"svg\"".to_string()),
             card.source_file.display(),
             field_name
         );
@@ -407,7 +428,7 @@ mod tests {
             deck: "Math".to_string(),
             tags: vec!["arithmetic".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Plain,
+            format: RenderFormat::Single(FieldFormat::Plain),
             source_file: PathBuf::from("test.typ"),
         };
 
@@ -453,31 +474,31 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec!["test".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Plain,
+            format: RenderFormat::Single(FieldFormat::Plain),
             source_file: PathBuf::from("test.typ"),
         };
 
         // Test all formats without render function (should use fallbacks)
         let plain_result = renderer
-            .render_field(&card, "Test", RenderFormat::Plain, None)
+            .render_field(&card, "Test", FieldFormat::Plain, None)
             .await;
         assert!(plain_result.is_ok());
         assert_eq!(plain_result.unwrap(), "Content");
 
         let svg_result = renderer
-            .render_field(&card, "Test", RenderFormat::Svg, None)
+            .render_field(&card, "Test", FieldFormat::Svg, None)
             .await;
         assert!(svg_result.is_ok());
         assert_eq!(svg_result.unwrap(), "Content");
 
         let png_result = renderer
-            .render_field(&card, "Test", RenderFormat::Png, None)
+            .render_field(&card, "Test", FieldFormat::Png, None)
             .await;
         assert!(png_result.is_ok());
         assert_eq!(png_result.unwrap(), "Content");
 
         let html_result = renderer
-            .render_field(&card, "Test", RenderFormat::Html, None)
+            .render_field(&card, "Test", FieldFormat::Html, None)
             .await;
         assert!(html_result.is_ok());
         let html = html_result.unwrap();
@@ -502,7 +523,7 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec![],
             rest: HashMap::new(),
-            format: RenderFormat::Plain,
+            format: RenderFormat::Single(FieldFormat::Plain),
             source_file: PathBuf::from("test.typ"),
         };
 
@@ -541,7 +562,7 @@ mod tests {
             deck: "Test Deck".to_string(),
             tags: vec!["tag1".to_string(), "tag2".to_string()],
             rest: rest_data,
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: PathBuf::from("source.typ"),
         };
 

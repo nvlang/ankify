@@ -93,7 +93,7 @@ impl Config {
             render: None,
             watch: false,
             cache_dir: PathBuf::from("cache"),
-            render_format: RenderFormat::Svg,
+            render_format: RenderFormat::Single(FieldFormat::Svg),
         }
     }
 
@@ -195,7 +195,7 @@ impl Config {
             render,
             watch: cli.watch,
             cache_dir: PathBuf::from("cache"),
-            render_format: RenderFormat::Svg,
+            render_format: RenderFormat::Single(FieldFormat::Svg),
         })
     }
 }

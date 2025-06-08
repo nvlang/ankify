@@ -43,6 +43,19 @@ struct CreateDeckParams {
 #[derive(Debug, Serialize)]
 struct AddNoteParams {
     note: AnkiNote,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    picture: Vec<PictureEntry>,
+}
+
+/// Picture entry for media file attachments.
+#[derive(Debug, Serialize)]
+struct PictureEntry {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<String>,
+    filename: String,
+    fields: Vec<String>,
 }
 
 /// Parameters for updating a note/card.
@@ -168,7 +181,10 @@ impl Client {
         let request = AnkiConnectRequest {
             action: "addNote".to_string(),
             version: 6,
-            params: Some(AddNoteParams { note }),
+            params: Some(AddNoteParams {
+                note,
+                picture: Vec::new(), // TODO: Will be populated based on card format
+            }),
         };
 
         let response: AnkiConnectResponse<u64> = self.send_request(request).await?;
@@ -206,15 +222,12 @@ impl Client {
 
         let response: AnkiConnectResponse<serde_json::Value> = self.send_request(request).await?;
 
-        if response.result.is_some() {
+        if response.error.is_none() {
             tracing::info!("Updated card {}", anki_id);
             Ok(())
         } else {
             Err(Error::anki_connect(response.error.unwrap_or_else(|| {
-                format!(
-                    "Failed to update card {}: no result or error returned",
-                    anki_id
-                )
+                format!("Failed to update card {}: error returned", anki_id)
             })))
         }
     }
@@ -446,6 +459,7 @@ mod tests {
             rest: HashMap::new(),
             label: "test-card-1".to_string(),
             source_file: PathBuf::from("test.typ"),
+            media_files: HashMap::new(),
         };
 
         let note_id = client.create_card(&card).await.unwrap();

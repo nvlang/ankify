@@ -123,8 +123,20 @@ async fn query_typst_metadata(typst_file: &Path, label: &str) -> Result<Vec<serd
         .map_err(|e| Error::typst(format!("Failed to execute typst command: {}", e)))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(Error::typst(format!("Typst query failed: {}", stderr)));
+        let _stderr = String::from_utf8_lossy(&output.stderr);
+
+        // During tests, we expect some errors and don't want to clutter the output
+        #[cfg(test)]
+        {
+            return Err(Error::typst(
+                "Typst query failed (stderr suppressed during tests)".to_string(),
+            ));
+        }
+
+        #[cfg(not(test))]
+        {
+            return Err(Error::typst(format!("Typst query failed: {}", _stderr)));
+        }
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -274,7 +286,7 @@ mod tests {
         assert_eq!(card.data.get("Back"), Some(&"Answer".to_string()));
         assert_eq!(card.deck, "Test");
         assert_eq!(card.tags, vec!["tag1", "tag2"]);
-        assert_eq!(card.format, RenderFormat::Svg);
+        assert_eq!(card.format, RenderFormat::Single(FieldFormat::Svg));
         assert_eq!(card.source_file, source_file);
     }
 
@@ -294,7 +306,7 @@ mod tests {
         assert_eq!(card.model, "Basic"); // Default
         assert_eq!(card.deck, "Default"); // Default
         assert!(card.tags.is_empty()); // Default
-        assert_eq!(card.format, RenderFormat::Svg); // Default
+        assert_eq!(card.format, RenderFormat::Single(FieldFormat::Svg)); // Default
     }
 
     #[test]
@@ -310,7 +322,7 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec![],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: Path::new("test.typ").to_path_buf(),
         };
 
@@ -326,7 +338,7 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec![],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: Path::new("test.typ").to_path_buf(),
         };
 
@@ -342,7 +354,7 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec![],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: Path::new("test.typ").to_path_buf(),
         };
 
@@ -358,7 +370,7 @@ mod tests {
             deck: "".to_string(), // Will be filled
             tags: vec![],         // Will be filled
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: Path::new("test.typ").to_path_buf(),
         };
 

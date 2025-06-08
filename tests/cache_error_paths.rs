@@ -1,5 +1,5 @@
 use ankify::cache::Cache;
-use ankify::{Card, RenderFormat};
+use ankify::{Card, FieldFormat, RenderFormat};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -26,7 +26,7 @@ mod cache_error_path_tests {
             deck: "Test Deck".to_string(),
             tags: vec!["test".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: PathBuf::from("test.typ"),
         }
     }
@@ -110,7 +110,7 @@ mod cache_error_path_tests {
             deck: "Unicode Test".to_string(),
             tags: vec!["unicode".to_string(), "international".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: PathBuf::from("unicode.typ"),
         };
 
@@ -134,7 +134,10 @@ mod cache_error_path_tests {
             ankify::cache::Operation::Create { .. }
         ));
 
-        // Simulate the card being processed by saving its state to the cache
+        // Simulate the card being processed by recording its creation in the cache
+        cache
+            .record_creation(&card, "test-anki-id".to_string())
+            .unwrap();
         cache.save().await.unwrap();
 
         // Same card should result in skip operation (no changes)
@@ -193,6 +196,10 @@ mod cache_error_path_tests {
                 &operations[0],
                 ankify::cache::Operation::Create { .. }
             ));
+            // Record the card creation before saving
+            cache
+                .record_creation(&card, "test-anki-id".to_string())
+                .unwrap();
             cache.save().await.unwrap();
         }
 

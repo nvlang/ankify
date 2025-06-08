@@ -333,7 +333,7 @@ mod tests {
             deck: "Test".to_string(),
             tags: vec![],
             rest: HashMap::new(),
-            format: RenderFormat::Svg,
+            format: RenderFormat::Single(FieldFormat::Svg),
             source_file: std::path::PathBuf::from("test.typ"),
         }
     }

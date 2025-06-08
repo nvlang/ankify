@@ -1,6 +1,6 @@
 //! Integration tests for the Ankify v2 application
 
-use ankify::{Ankify, Config, Result};
+use ankify::{Ankify, Config, FieldFormat, Result};
 use std::path::PathBuf;
 use tempfile::TempDir;
 use tokio::fs;
@@ -249,6 +249,7 @@ mod anki_integration_tests {
             rest: HashMap::new(),
             label: "test-card".to_string(),
             source_file: PathBuf::from("test.typ"),
+            media_files: HashMap::new(),
         };
 
         assert_eq!(card.deck, "Test Deck");
@@ -287,6 +288,7 @@ mod anki_integration_tests {
             rest: HashMap::new(),
             label: "test-card".to_string(),
             source_file: PathBuf::from("test.typ"),
+            media_files: HashMap::new(),
         };
 
         let create_result = anki.create_card(&card).await;
@@ -330,6 +332,7 @@ mod anki_integration_tests {
             rest: HashMap::new(),
             label: "incomplete-card".to_string(),
             source_file: PathBuf::from("test.typ"),
+            media_files: HashMap::new(),
         };
 
         let result = anki.create_card(&incomplete_card).await;
@@ -355,6 +358,7 @@ mod anki_integration_tests {
             rest: HashMap::new(),
             label: "invalid-deck-card".to_string(),
             source_file: PathBuf::from("test.typ"),
+            media_files: HashMap::new(),
         };
 
         let invalid_result = anki.create_card(&invalid_deck_card).await;
@@ -455,7 +459,7 @@ async fn test_caching_behavior() -> Result<()> {
         deck: "Test Deck".to_string(),
         tags: vec!["test".to_string()],
         rest: std::collections::HashMap::new(),
-        format: ankify::RenderFormat::Plain,
+        format: ankify::RenderFormat::Single(ankify::FieldFormat::Plain),
         source_file: std::path::PathBuf::from("test.typ"),
     };
 
@@ -584,36 +588,19 @@ mod main_integration_tests {
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path();
 
-        // Copy ankify.typ to temp directory
+        // Copy the real ankify.typ to temp directory
         let ankify_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("typst/ankify.typ");
         let ankify_dst = temp_path.join("ankify.typ");
-        if ankify_src.exists() {
-            fs::copy(&ankify_src, &ankify_dst).await.unwrap();
-        } else {
-            // Create minimal ankify.typ for testing
-            let minimal_ankify = r#"
-#let card(label, ..args) = {
-  // Minimal card implementation for testing
-}
+        fs::copy(&ankify_src, &ankify_dst).await.unwrap();
 
-#let configure(..args) = {
-  // Minimal configure implementation for testing
-}
-"#;
-            fs::write(&ankify_dst, minimal_ankify).await.unwrap();
-        }
-
-        // Create test Typst file
+        // Create test Typst file with correct syntax
         let typst_content = r#"
-#import "ankify.typ": card, configure
-
-#configure(
-  deck: "Integration Test",
-  tags: ["main-test"],
-)
+#import "ankify.typ": card
 
 #card(
   "main-test-1",
+  deck: "Integration Test",
+  tags: ("main-test",),
   data: (
     Front: "Main test question",
     Back: "Main test answer"
@@ -666,7 +653,7 @@ mod main_integration_tests {
         custom_config.aux_file = temp_path.join("custom.json");
         custom_config.cache_dir = temp_path.join("custom_cache");
         custom_config.ankiconnect_url = "http://custom:9999".to_string();
-        custom_config.render_format = ankify::RenderFormat::Html;
+        custom_config.render_format = ankify::RenderFormat::Single(ankify::FieldFormat::Html);
         custom_config.bypass_cache = true;
 
         // Test Ankify initialization with custom config
@@ -674,7 +661,10 @@ mod main_integration_tests {
         // Can't access private fields, so just test that creation succeeds
         drop(ankify); // Explicitly consume to avoid unused warning
         assert_eq!(custom_config.ankiconnect_url, "http://custom:9999");
-        assert_eq!(custom_config.render_format, ankify::RenderFormat::Html);
+        assert_eq!(
+            custom_config.render_format,
+            ankify::RenderFormat::Single(ankify::FieldFormat::Html)
+        );
         assert!(custom_config.bypass_cache);
     }
 
@@ -701,6 +691,11 @@ mod main_integration_tests {
     async fn test_processing_functionality() {
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path();
+
+        // Copy the real ankify.typ to temp directory
+        let ankify_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("typst/ankify.typ");
+        let ankify_dst = temp_path.join("ankify.typ");
+        fs::copy(&ankify_src, &ankify_dst).await.unwrap();
 
         // Create test files
         let typst_content = r#"
@@ -793,26 +788,26 @@ mod render_integration_tests {
             deck: "Programming".to_string(),
             tags: vec!["rust".to_string(), "programming".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Plain,
+            format: ankify::RenderFormat::Single(ankify::FieldFormat::Plain),
             source_file: temp_dir.path().join("test.typ"),
         };
 
         // Test plain text rendering (should always work)
         let front_result = renderer
-            .render_field(&card, "Front", RenderFormat::Plain, None)
+            .render_field(&card, "Front", ankify::FieldFormat::Plain, None)
             .await;
         assert!(front_result.is_ok());
         assert_eq!(front_result.unwrap(), "What is Rust?");
 
         let back_result = renderer
-            .render_field(&card, "Back", RenderFormat::Plain, None)
+            .render_field(&card, "Back", ankify::FieldFormat::Plain, None)
             .await;
         assert!(back_result.is_ok());
         assert_eq!(back_result.unwrap(), "A systems programming language");
 
         // Test nonexistent field
         let missing_result = renderer
-            .render_field(&card, "NonExistent", RenderFormat::Plain, None)
+            .render_field(&card, "NonExistent", ankify::FieldFormat::Plain, None)
             .await;
         assert!(missing_result.is_ok());
         assert_eq!(missing_result.unwrap(), ""); // Should return empty string
@@ -842,7 +837,7 @@ mod render_integration_tests {
             deck: "Mathematics".to_string(),
             tags: vec!["arithmetic".to_string(), "basic".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Plain,
+            format: ankify::RenderFormat::Single(ankify::FieldFormat::Plain),
             source_file: temp_dir.path().join("math.typ"),
         };
 
@@ -885,7 +880,7 @@ mod render_integration_tests {
                     deck: "Batch Test".to_string(),
                     tags: vec![format!("batch-{}", i)],
                     rest: HashMap::new(),
-                    format: RenderFormat::Plain,
+                    format: RenderFormat::Single(FieldFormat::Plain),
                     source_file: temp_dir.path().join("batch.typ"),
                 }
             })
@@ -926,20 +921,20 @@ mod render_integration_tests {
             deck: "Format Test".to_string(),
             tags: vec!["format".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Plain,
+            format: RenderFormat::Single(FieldFormat::Plain),
             source_file: temp_dir.path().join("format.typ"),
         };
 
         // Test plain format (should always work)
         let plain_result = renderer
-            .render_field(&card, "Front", RenderFormat::Plain, None)
+            .render_field(&card, "Front", FieldFormat::Plain, None)
             .await;
         assert!(plain_result.is_ok());
         assert_eq!(plain_result.unwrap(), "Test Content");
 
         // Test HTML format (fallback to plain without render function)
         let html_result = renderer
-            .render_field(&card, "Front", RenderFormat::Html, None)
+            .render_field(&card, "Front", FieldFormat::Html, None)
             .await;
         assert!(html_result.is_ok());
         let html_content = html_result.unwrap();
@@ -948,14 +943,14 @@ mod render_integration_tests {
 
         // Test SVG format (fallback to plain without render function)
         let svg_result = renderer
-            .render_field(&card, "Front", RenderFormat::Svg, None)
+            .render_field(&card, "Front", FieldFormat::Svg, None)
             .await;
         assert!(svg_result.is_ok());
         assert_eq!(svg_result.unwrap(), "Test Content");
 
         // Test PNG format (fallback to plain without render function)
         let png_result = renderer
-            .render_field(&card, "Front", RenderFormat::Png, None)
+            .render_field(&card, "Front", FieldFormat::Png, None)
             .await;
         assert!(png_result.is_ok());
         assert_eq!(png_result.unwrap(), "Test Content");
@@ -982,14 +977,14 @@ mod render_integration_tests {
             deck: "Error Test".to_string(),
             tags: vec!["error".to_string()],
             rest: HashMap::new(),
-            format: RenderFormat::Plain,
+            format: RenderFormat::Single(FieldFormat::Plain),
             source_file: temp_dir.path().join("error.typ"),
         };
 
         // Test rendering with invalid render function path
         let invalid_path = temp_dir.path().join("nonexistent.typ");
         let result = renderer
-            .render_field(&card, "Front", RenderFormat::Svg, Some(&invalid_path))
+            .render_field(&card, "Front", FieldFormat::Svg, Some(&invalid_path))
             .await;
 
         // Should handle error gracefully
@@ -1093,7 +1088,7 @@ mod lib_integration_tests {
                 aux_file: temp_path.join("custom.json"),
                 cache_dir: temp_path.join("custom_cache"),
                 ankiconnect_url: "http://custom:8765".to_string(),
-                render_format: ankify::RenderFormat::Html,
+                render_format: ankify::RenderFormat::Single(ankify::FieldFormat::Html),
                 ..Config::default()
             },
             // Minimal configuration

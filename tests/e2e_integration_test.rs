@@ -110,7 +110,7 @@ async fn test_complete_e2e_workflow() -> Result<(), Box<dyn std::error::Error>> 
         bypass_cache: false,
         render: None,
         defaults: ankify::CardDefaults::default(),
-        render_format: ankify::RenderFormat::Svg,
+        render_format: ankify::RenderFormat::Single(ankify::FieldFormat::Svg),
         watch: false,
     };
 
@@ -171,11 +171,56 @@ async fn test_e2e_with_file_changes() -> Result<(), Box<dyn std::error::Error>> 
     // Setup mock AnkiConnect server
     let mock_server = MockServer::start().await;
 
-    // Mock version and card operations
+    // Mock version check
     Mock::given(method("POST"))
         .and(path("/"))
+        .and(body_json(json!({
+            "action": "version",
+            "version": 6
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "result": 6,
+            "error": null
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Mock deck names request
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_json(json!({
+            "action": "deckNames",
+            "version": 6
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": ["Default"],
+            "error": null
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Mock all addNote/updateNote requests
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_partial_json(json!({
+            "action": "addNote",
+            "version": 6
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": 1234567890u64,
+            "error": null
+        })))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(body_partial_json(json!({
+            "action": "updateNote",
+            "version": 6
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": null,
             "error": null
         })))
         .mount(&mock_server)
@@ -211,7 +256,7 @@ async fn test_e2e_with_file_changes() -> Result<(), Box<dyn std::error::Error>> 
         bypass_cache: false,
         render: None,
         defaults: ankify::CardDefaults::default(),
-        render_format: ankify::RenderFormat::Svg,
+        render_format: ankify::RenderFormat::Single(ankify::FieldFormat::Svg),
         watch: false,
     };
 
