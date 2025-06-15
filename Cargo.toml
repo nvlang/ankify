@@ -1,17 +1,8 @@
-[package]
-name = "ankify"
-version = "2.0.0"
-edition = "2021"
-description = "Advanced Typst to Anki bridge with caching, templating, and watch mode support"
-authors = ["Your Name <your.email@example.com>"]
-license = "MIT OR Apache-2.0"
-readme = "README.md"
-repository = "https://github.com/nvlang/ankify"
-keywords = ["anki", "typst", "flashcards", "spaced-repetition"]
-categories = ["command-line-utilities", "text-processing"]
+[workspace]
+members = ["packages/ankify-cli"]
+resolver = "2"
 
-
-[dependencies]
+[workspace.dependencies]
 # Async runtime
 tokio = { version = "1.45", features = ["full"] }
 
@@ -50,6 +41,15 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Typst for content parsing and serialization
 typst = "0.13"
+typst-eval = "0.13"
+typst-html = "0.13"
+typst-kit = "0.13"
+typst-macros = "0.13"
+typst-pdf = "0.13"
+typst-render = "0.13"
+typst-svg = "0.13"
+typst-timing = "0.13"
+typst-cli = "0.13"
 
 # File watching
 futures = "0.3"
@@ -57,11 +57,9 @@ futures = "0.3"
 # Path handling
 pathdiff = "0.2"
 
-[dev-dependencies]
 # Testing utilities
 tokio-test = "0.4"
 mockito = "1.7"
-tempfile = "3.20"
 wiremock = "0.6"
 proptest = "1.6"
 rand = "0.9"
@@ -75,11 +73,3 @@ panic = "abort"
 
 [profile.dev]
 debug = true
-
-[[bin]]
-name = "ankify"
-path = "src/main.rs"
-
-[lib]
-name = "ankify"
-path = "src/lib.rs"

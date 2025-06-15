@@ -1,0 +1,86 @@
+[package]
+name = "ankify"
+version = "2.0.0"
+edition = "2021"
+description = "Advanced Typst to Anki bridge with caching, templating, and watch mode support"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/nvlang/ankify"
+keywords = ["anki", "typst", "flashcards", "spaced-repetition"]
+categories = ["command-line-utilities", "text-processing"]
+
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+
+# CLI and configuration
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP client for AnkiConnect
+reqwest = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# File system operations
+glob = { workspace = true }
+walkdir = { workspace = true }
+notify = { workspace = true }
+tempfile = { workspace = true }
+
+# Hashing and caching
+sha2 = { workspace = true }
+hex = { workspace = true }
+uuid = { workspace = true }
+
+# Base64 encoding for images
+base64 = { workspace = true }
+
+# Date and time handling
+chrono = { workspace = true }
+
+# Typst for content parsing and serialization
+typst = { workspace = true }
+typst-eval = { workspace = true }
+typst-html = { workspace = true }
+typst-kit = { workspace = true }
+typst-macros = { workspace = true }
+typst-pdf = { workspace = true }
+typst-render = { workspace = true }
+typst-svg = { workspace = true }
+typst-timing = { workspace = true }
+typst-cli = { workspace = true }
+
+# File watching
+futures = { workspace = true }
+
+# Path handling
+pathdiff = { workspace = true }
+
+[dev-dependencies]
+# Testing utilities
+tokio-test = { workspace = true }
+mockito = { workspace = true }
+tempfile = { workspace = true }
+wiremock = { workspace = true }
+proptest = { workspace = true }
+rand = { workspace = true }
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+
+[[bin]]
+name = "ankify"
+path = "src/main.rs"
+
+[lib]
+name = "ankify"
+path = "src/lib.rs"
