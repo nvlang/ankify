@@ -155,8 +155,9 @@ async fn test_query_empty_configuration() {
 async fn test_query_empty_notes() {
     // Use a static fixture file with configuration but no notes
     let no_notes_file = fixture_path("no_notes.typ");
+    let root_path = get_root_path();
 
-    let result = query_ankify_notes(&no_notes_file, None).await;
+    let result = query_ankify_notes(&no_notes_file, Some(&["--root", &root_path])).await;
     assert!(result.is_ok(), "Query should succeed even with no notes");
 
     let notes = result.unwrap();
@@ -165,47 +166,8 @@ async fn test_query_empty_notes() {
 
 #[tokio::test]
 async fn test_query_with_custom_configuration() {
-    // Create a test file with custom configuration
-    let custom_config_content = r#"
-#import "ankify-typst/lib.typ": note, configure
-
-#configure(
-  ankiconnect-url: "http://custom:9999",
-  verbose: true,
-  render: "custom-render",
-  cache: (
-    enabled: false,
-    custom-file: "custom.json"
-  ),
-  checks: (
-    typst: (
-      data: false,
-      format: false
-    ),
-    ankiconnect: (
-      model: false,
-      deck: false,
-      tags: false
-    )
-  )
-)
-
-#note(
-  label: "custom-note",
-  deck: "Custom-Deck",
-  model: "Custom-Model",
-  format: "plain",
-  tags: ("custom", "test"),
-  data: (
-    Front: "Custom question",
-    Back: "Custom answer",
-  ),
-)
-"#;
-
+    // Use a static fixture file with custom configuration
     let custom_config_file = fixture_path("custom_config.typ");
-    std::fs::write(&custom_config_file, custom_config_content).unwrap();
-
     let root_path = get_root_path();
 
     // Test configuration
@@ -253,9 +215,6 @@ async fn test_query_with_custom_configuration() {
     assert_eq!(note.model, "Custom-Model");
     assert_eq!(note.format, Some("plain".to_string()));
     assert_eq!(note.tags, vec!["custom".to_string(), "test".to_string()]);
-
-    // Clean up
-    std::fs::remove_file(&custom_config_file).ok();
 }
 
 #[tokio::test]
@@ -301,7 +260,9 @@ async fn test_invalid_typst_file() {
 This is invalid Typst syntax: #invalid_function(
 "#;
 
-    let invalid_file = fixture_path("invalid.typ");
+    // Use a unique filename to avoid conflicts in parallel tests
+    let thread_id = std::thread::current().id();
+    let invalid_file = fixture_path(&format!("invalid_{:?}.typ", thread_id));
     std::fs::write(&invalid_file, invalid_content).unwrap();
 
     let config_result = query_ankify_configuration(&invalid_file, None).await;

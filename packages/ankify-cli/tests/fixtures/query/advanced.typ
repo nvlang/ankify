@@ -1,6 +1,6 @@
 #import "../../../../ankify-typst/lib.typ": note, configure
 
-// Advanced configuration with all options
+// Advanced configuration with all options including defaults
 #configure(
   ankiconnect-url: "http://advanced:9000",
   verbose: true,
@@ -21,39 +21,51 @@
     ),
   ),
   defaults: (
-    model: "Advanced",
-    deck: "Advanced-Deck",
-    tags: ("advanced", "test"),
+    model: "Cloze",
+    deck: "Default-Deck",
     format: "svg",
+    tags: ("default-tag",),
   ),
 )
 
-// Advanced note with multiple features
+// Advanced math note
 #note(
-  label: "advanced-note",
-  deck: "Advanced-Test",
-  model: "Cloze",
-  format: "png",
-  tags: ("math", "advanced", "geometry"),
-  data: (
-    Text: [In a right triangle, if the legs have lengths $a$ and $b$, then the hypotenuse has length {{c1::$sqrt(a^2 + b^2)$}}],
-    Extra: [This is the Pythagorean theorem],
-  ),
-  other: (
-    source: "Geometry textbook",
-    difficulty: "intermediate",
-  ),
-)
-
-// Another advanced note
-#note(
-  label: "complex-math",
-  deck: "Advanced-Test",
+  label: "advanced-math",
+  deck: "Mathematics",
   model: "Basic",
   format: "svg",
-  tags: ("calculus", "limits"),
+  tags: ("calculus", "derivatives"),
   data: (
-    Front: [What is $lim_(x -> 0) (sin x) / x$?],
-    Back: [The limit is $1$. This is a fundamental limit in calculus.],
+    Front: [What is the derivative of $sin(x)$?],
+    Back: [
+      The derivative of $sin(x)$ is $cos(x)$.
+
+      #block[
+        This follows from the fundamental trigonometric limit:
+        $lim_(h -> 0) (sin(h))/h = 1$
+      ]
+    ],
+    Extra: "This is a fundamental result in calculus",
+  ),
+)
+
+// Programming concept note
+#note(
+  label: "programming-concept",
+  deck: "Computer Science",
+  model: "Basic",
+  format: "plain",
+  tags: ("programming", "rust"),
+  data: (
+    Front: "What is ownership in Rust?",
+    Back: [
+      Ownership is Rust's unique approach to memory management.
+
+      Key rules:
+      - Each value has a single owner
+      - When the owner goes out of scope, the value is dropped
+      - Ownership can be moved or borrowed
+    ],
+    Extra: "This prevents memory leaks and data races at compile time",
   ),
 )

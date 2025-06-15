@@ -168,18 +168,23 @@
 /// CLI tool processes cards in this document. Settings specified here can
 /// be overridden by CLI arguments.
 ///
-/// # Arguments
+/// === Arguments
 ///
 /// - `ankiconnect-url` (optional): URL for AnkiConnect API
 /// - `verbose` (optional): Enable verbose output
-/// - `cache_file` (optional): Path to cache file
 /// - `defaults` (optional): Default values for card fields
 /// - `render` (optional): Name of custom render function
-/// - `bypass_cache` (optional): Whether to bypass cache for this document
+/// - `cache` (optional): Cache settings
+///   - `enabled`: Whether to enable caching (default: true)
+///   - `custom-file`: Path to custom cache file (default: none, uses default cache)
+/// - `checks` (optional): Validation checks to perform
+///   - `typst`: Checks for Typst data and format
+///   - `ankiconnect`: Checks for AnkiConnect fields like model, deck, or tags
 ///
-/// # Examples
+/// === Examples
 ///
 /// Basic configuration:
+//
 /// ```typst
 /// #configure(
 ///   ankiconnect-url: "http://localhost:8765",

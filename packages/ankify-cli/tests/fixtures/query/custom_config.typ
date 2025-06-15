@@ -1,4 +1,3 @@
-
 #import "../../../../ankify-typst/lib.typ": note, configure
 
 #configure(
@@ -7,19 +6,19 @@
   render: "custom-render",
   cache: (
     enabled: false,
-    custom-file: "custom.json",
+    custom-file: "custom.json"
   ),
   checks: (
     typst: (
       data: false,
-      format: false,
+      format: false
     ),
     ankiconnect: (
       model: false,
       deck: false,
-      tags: false,
-    ),
-  ),
+      tags: false
+    )
+  )
 )
 
 #note(
