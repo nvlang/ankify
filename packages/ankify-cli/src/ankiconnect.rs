@@ -9,7 +9,7 @@ const DEFAULT_URL: &str = "http://127.0.0.1:8765";
 macro_rules! new_type {
     ($name:ident, $inner:ty) => {
         #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        pub struct $name($inner);
+        pub struct $name(pub $inner);
     };
 }
 
