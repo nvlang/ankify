@@ -14,7 +14,8 @@
 //! #context {
 //!   (__ankify-configuration.final().setup)()
 //!   for note in __ankify-notes.final() {
-//!     for (field, value) in note.data {
+//!     let sorted-data = note.data.pairs().sorted()
+//!     for (field, value) in sorted-data {
 //!       let field-content = none
 //!       if (type(value) == dictionary and "value" in value) {
 //!         field-content = value.value
@@ -175,12 +176,12 @@ fn generate_typst_content(
 
     // For tests and local development, use relative path instead of @preview
     let import_statement = if plugin_version == "local" || plugin_version == "test" || cfg!(test) {
-        // For test fixtures, they're at packages/ankify-cli/tests/fixtures/generate/
+        // For test fixtures, they're at packages/ankify-cli/tests/fixtures/*/
         // and need to go up to root then down to ankify-typst
-        // The temp file will be at packages/ankify-cli/tests/fixtures/generate/.ankify/
-        // so same depth - need ../../../../ankify-typst/lib.typ
+        // The temp file will be at packages/ankify-cli/tests/fixtures/*/.test_temp/
+        // so we need ../../../../../ankify-typst/lib.typ (one more ../ to get to packages/)
         format!(
-            "#import \"../../../../ankify-typst/lib.typ\": __ankify-configuration, __ankify-notes"
+            "#import \"../../../../../ankify-typst/lib.typ\": __ankify-configuration, __ankify-notes"
         )
     } else {
         format!(
@@ -198,7 +199,8 @@ fn generate_typst_content(
 #context {{
   (__ankify-configuration.final().setup)()
   for note in __ankify-notes.final() {{
-    for (field, value) in note.data {{
+    let sorted-data = note.data.pairs().sorted()
+    for (field, value) in sorted-data {{
       let field-content = none
       if (type(value) == dictionary and "value" in value) {{
         field-content = value.value
@@ -330,7 +332,7 @@ mod tests {
         let content = generate_typst_content("../source.typ", "source", "0.1.0").unwrap();
         assert!(content.contains("#import \"../source.typ\" as source"));
         // In test environment, it will use relative path due to cfg!(test)
-        assert!(content.contains("../../../../ankify-typst/lib.typ"));
+        assert!(content.contains("../../../../../ankify-typst/lib.typ"));
         assert!(content.contains("#hide([#source])"));
         assert!(content.contains("#set page(height: auto)"));
         assert!(content.contains("__ankify-configuration.final().setup"));
@@ -341,7 +343,7 @@ mod tests {
     fn test_generate_typst_content_local() {
         let content = generate_typst_content("../source.typ", "source", "local").unwrap();
         assert!(content.contains(
-            "#import \"../../../../ankify-typst/lib.typ\": __ankify-configuration, __ankify-notes"
+            "#import \"../../../../../ankify-typst/lib.typ\": __ankify-configuration, __ankify-notes"
         ));
     }
 

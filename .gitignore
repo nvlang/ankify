@@ -29,3 +29,6 @@ coverage
 cache
 temp
 tmp
+
+# Test temporary directories
+**/tests/fixtures/**/.test_temp*

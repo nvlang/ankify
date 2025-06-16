@@ -22,22 +22,72 @@ new_type!(DeckId, u64);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Model(String);
 
+impl Model {
+    pub fn new(name: String) -> Self {
+        Model(name)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// A string which, if checks are turned on, is guaranteed to be a valid Anki
 /// deck name.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Deck(String);
+
+impl Deck {
+    pub fn new(name: String) -> Self {
+        Deck(name)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 /// A string which, if checks are turned on, is guaranteed to be a valid Anki
 /// field name.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Field(String);
 
+impl Field {
+    pub fn new(name: String) -> Self {
+        Field(name)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 new_type!(FieldValue, String);
+
+impl FieldValue {
+    pub fn new(value: String) -> Self {
+        FieldValue(value)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 /// A string which, if checks are turned on, is guaranteed to be a valid Anki
 /// tag name.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Tag(String);
+
+impl Tag {
+    pub fn new(name: String) -> Self {
+        Tag(name)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 new_type!(Profile, String);
 new_type!(Query, String);

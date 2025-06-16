@@ -76,6 +76,7 @@ proptest = { workspace = true }
 rand = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
+regex = "1.10"
 
 [[bin]]
 name = "ankify"

@@ -12,8 +12,8 @@ b
   model: "Basic",
   format: "png",
   data: (
-    Front: "What is the Pythagorean theorem?",
     Back: [test $lim_(n -> infinity) n / 2$ ... #rect(height: 100pt, fill: blue)],
+    Front: "What is the Pythagorean theorem?",
   ),
 )
 

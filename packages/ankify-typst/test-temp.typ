@@ -6,7 +6,8 @@
 #context {
   (__ankify-configuration.final().setup)()
   for note in __ankify-notes.final() {
-    for (field, value) in note.data {
+    let sorted-data = note.data.pairs().sorted()
+    for (field, value) in sorted-data {
       let field-content = none
       if (type(value) == dictionary and "value" in value) {
         field-content = value.value
