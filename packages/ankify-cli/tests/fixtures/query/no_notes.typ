@@ -4,16 +4,12 @@
 #configure(
   ankiconnect-url: "http://localhost:8765",
   verbose: false,
-  render: "ankify-render",
   cache: (
     enabled: true,
     custom-file: none,
   ),
   checks: (
-    typst: (
-      data: true,
-      format: true,
-    ),
+    typst: true,
     ankiconnect: (
       model: true,
       deck: true,

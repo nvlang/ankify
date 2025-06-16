@@ -1,36 +1,24 @@
 // See the file LICENSE for the full license governing this code.
 
-#import "util/validate.typ": _validate-data
+// Use Valkyrie for type validation
+#import "@preview/valkyrie:0.2.2" as z
 
-#let ankify-notes = state("ankify-notes", ())
-#let ankify-configuration = state(
-  "ankify-configuration",
-  (
-    ankiconnect-url: "http://localhost:8765",
-    verbose: false,
-    defaults: (
-      model: "Basic",
-      deck: "Default",
-      format: "png",
-    ),
-    render: "ankify-render",
-    cache: (
-      enabled: true,
-      custom-file: none, // use default
-    ),
-    checks: (
-      typst: (
-        data: true,
-        format: true,
-      ),
-      ankiconnect: (
-        model: true,
-        deck: true,
-        tags: true,
-      ),
-    ),
-  ),
-)
+#import "util/schemas.typ": default-configuration, note-schema, configuration-schema
+#import "util/merge.typ": merge
+
+// ⚠ Warning: For Ankify-internal use only! Not part of the public API. (It
+// still has to be exported for technical reasons, hence its visibility to the
+// user.)
+//
+// State to hold Ankify notes.
+#let __ankify-notes = state("ankify-notes", ())
+
+// ⚠ Warning: For Ankify-internal use only! Not part of the public API. (It
+// still has to be exported for technical reasons, hence its visibility to the
+// user.)
+//
+// State to hold Ankify configuration.
+#let __ankify-configuration = state("ankify-configuration", default-configuration)
 
 /// Ankify Typst Extension
 ///
@@ -68,94 +56,86 @@
 /// ```
 
 
-/// Create an Anki card with the specified metadata.
-///
-/// This function stores card data as metadata that can be extracted by the
-/// Ankify CLI tool. It does not render the card content - that is handled
-/// by the CLI tool based on the format and render settings.
-///
-/// === Arguments
-///
-/// - `label` (required): Unique identifier for this note
-/// - `model` (optional): Anki note type (defaults to "Basic")
-/// - `data` (required): Dictionary of field names to content
-/// - `deck` (optional): Anki deck name (defaults to "Default")
-/// - `tags` (optional): Array of tags to apply
-/// - `other` (optional): Additional metadata to pass to AnkiConnect
-/// - `format` (optional): Rendering format ("svg", "png", "plain")
-///
-/// === Examples
-///
-/// Basic note:
-///
-/// ```typst
-/// #note(
-///   "basic-example",
-///   data: (
-///     Front: "What is Rust?",
-///     Back: "A systems programming language"
-///   )
-/// )
-/// ```
-///
-/// Note with full options:
-///
-/// ```typst
-/// #note(
-///   "advanced-example",
-///   model: "Basic (and reversed note)",
-///   data: (
-///     Front: "Question text",
-///     Back: "Answer text",
-///     Extra: "Additional information"
-///   ),
-///   deck: "Computer Science",
-///   tags: ("programming", "rust"),
-///   format: "png",
-///   other: (
-///     customField: "custom value"
-///   )
-/// )
-/// ```
+// Create a note.
+//
+// *Note:* This function creates a note which is visible to Ankify, but which
+// won't be visible in the document itself. Accordingly, this function is
+// ideally called within some user-defined function that is used to create some
+// content that should have an Anki note attached to it.
+//
+// = Examples
+//
+// ```typst
+// #let theorem(label, name, statement) = {
+//   #note(label, data: (Front: name, Back: statement), deck: "Theorems", tags: ("theorem"))
+//   [*Theorem (#name).* #statement]
+// }
+//
+// #theorem(
+//   "pythagorean-theorem",
+//   "Pythagorean Theorem",
+//   [If $a$ and $b$ are the legs of a right triangle, and $c$ is the hypotenuse, then $a^2 + b^2 = c^2$.]
+// )
+// ```
+//
+// ---
+//
+// - note-label (str): _(Required)_ Note label, used as a unique identifier.
+// - data (dictionary): Dictionary of field names to content, strings, or
+//   dictionaries. Default: `none`
+// - model (str): Anki note type. Default: `"Basic"`
+// - deck (str): Anki deck name. Default: `"Default"`
+// - tags (array): Array of tags (strings) to apply. Default: `()` (empty array)
+// - other (dictionary): Additional metadata to pass to AnkiConnect. Default:
+//   `none`
+// - format (str): Rendering format (`"png"`, `"svg"`, `"plain"`). Default:
+//   `"png"`
+// - render (function): Function to render the note content. Its signature is
+//   `(note: dictionary, field: str, field-content: content | str) => content`,
+//   where the named parameter `field-content` receives the content of the field
+//   in question and is made available for the user's convenience. Default:
+//   `(field-content: []) => { field-content }`
+//
+// -> content
 #let note(
-  label: str,
-  data: dictionary,
-  model: str,
-  deck: str,
-  tags: (str,),
-  other: dictionary,
-  format: str,
+  note-label,
+  data: none,
+  model: none,
+  deck: none,
+  tags: none,
+  other: none,
+  format: none,
+  render: none,
 ) = {
   context {
-    let checks = ankify-configuration.get().checks
-
-    // Validate required arguments
-    assert(type(label) == str and label != "", message: "Note/card label must be a non-empty string")
-
-    if (checks.typst.data != false) {
-      _validate-data(data: data)
-    }
-
-    assert(
-      checks.typst.format == false or format == none or (type(format) == str and format in ("svg", "png", "plain")),
-      message: "`format` must be one of: \"svg\", \"png\", \"plain\"",
+    let note-object = (
+      label: note-label,
+      data: data,
+      model: model,
+      tags: tags,
+      deck: deck,
+      other: other,
+      format: format,
     )
 
+    note-object = merge(
+      __ankify-configuration.get().defaults,
+      note-object,
+    )
+
+    let checks = __ankify-configuration.get().checks
+
+    if (checks.typst) {
+      note-object = z.parse(note-object, note-schema)
+    }
+
     // Store as metadata for CLI extraction
-    [#metadata((
-        label: label,
-        data: data,
-        model: model,
-        tags: tags,
-        deck: deck,
-        other: other,
-        format: format,
-      )) <ankify-note>]
+    [#metadata(note-object) <ankify-note>]
 
     // Return both the update (which places the state change) and the content
     [
-      #ankify-notes.update(notes => {
-        notes.push(x)
+      #__ankify-notes.update(notes => {
+        notes.push(note-object)
         notes
       })
     ]
@@ -173,7 +153,8 @@
 /// - `ankiconnect-url` (optional): URL for AnkiConnect API
 /// - `verbose` (optional): Enable verbose output
 /// - `defaults` (optional): Default values for card fields
-/// - `render` (optional): Name of custom render function
+/// - `setup` (optional): Setup function
+/// - `render` (optional): Render function
 /// - `cache` (optional): Cache settings
 ///   - `enabled`: Whether to enable caching (default: true)
 ///   - `custom-file`: Path to custom cache file (default: none, uses default cache)
@@ -207,30 +188,71 @@
 /// )
 /// ```
 ///
-/// Configuration with different render function name:
+/// Configuration with different render function:
 ///
 /// ```typst
 /// #configure(
-///   render: "custom-render",
+///   render: (note: dictionary, field: str) => {
+///     [#field: #note.data[field]]
+///   },
 ///   defaults: (
 ///     format: "png"
 ///   )
 /// )
 /// ```
+///
+///
+
+// Configure Ankify.
+//
+// Note that only the `defaults` parameter is properly stateful, i.e., can be
+// changed throughout the document and will have these changes respected. For
+// all other parameters, only the last value set in the document will be
+// respected.
+//
+// = Examples
+//
+// ```typst
+// #configure(
+//   ankiconnect-url: "http://localhost:8765",
+//   setup: () => {
+//     set page(
+//       // ...
+//     )
+//   }
+// )
+// ```
+//
+// ---
+//
+// - ankiconnect-url (str): URL for AnkiConnect API. Default:
+//   `"http://localhost:8765"`
+// - verbose (bool): Enable verbose output. Default: `false`
+// - defaults (dictionary): Default values for card fields.
+// - setup (function): Setup function to run at the start of the document.
+// - cache (dictionary): Cache settings.
+//   - enabled (bool): Whether to enable caching. Default: `true`
+//   - custom-file (str): Path to custom cache file. Default: `none` (uses
+//     default cache)
+// - checks (dictionary): Validation checks to perform.
+//   - typst (bool): Enable Typst data and format checks. Default: `true`
+//   - ankiconnect (dictionary): Enable AnkiConnect checks.
+//     - model (bool): Check if model exists. Default: `true`
+//     - deck (bool): Check if deck exists. Default: `true`
+//     - tags (bool): Check if tags exist. Default: `true`
+//
+// -> none
 #let configure(
   ankiconnect-url: "http://localhost:8765",
   verbose: false,
   defaults: (:),
-  render: "ankify-render",
+  setup: none,
   cache: (
     enabled: true,
-    custom-file: none, // use default
+    custom-file: none,
   ),
   checks: (
-    typst: (
-      data: true,
-      format: true,
-    ),
+    typst: true,
     ankiconnect: (
       model: true,
       deck: true,
@@ -238,76 +260,30 @@
     ),
   ),
 ) = {
-  // Type-check arguments
-  assert(ankiconnect-url == none or type(ankiconnect-url) == str, message: "AnkiConnect URL must be a string")
-  assert(verbose == none or type(verbose) == bool, message: "Verbose must be a boolean")
-  assert(render == none or type(render) == str, message: "Render function name must be a string")
-  if (cache != none) {
-    assert(
-      type(cache) == dictionary,
-      message: "Cache configuration must be a dictionary",
-    )
-    for (key, value) in cache {
-      if (key == "enabled") {
-        assert(
-          type(value) == bool,
-          message: "Cache enabled must be a boolean",
-        )
-      } else if (key == "custom-file") {
-        assert(
-          type(value) == str or value == none,
-          message: "Cache custom file must be a string or none",
-        )
-      } else {
-        panic("Unknown cache key: " + key + ". Valid keys are: \"enabled\", \"custom-file\"")
-      }
-    }
-  }
-
-  if defaults != none {
-    assert(
-      type(defaults) == dictionary,
-      message: "Defaults must be a dictionary",
+  __ankify-configuration.update(config => {
+    let new-config = (
+      ankiconnect-url: ankiconnect-url,
+      verbose: verbose,
+      setup: setup,
+      defaults: defaults,
+      cache: cache,
+      checks: checks,
     )
 
-    // Validate defaults structure
-    for (key, value) in defaults {
-      if key == "model" {
-        assert(type(value) == str, message: "Default model must be a string")
-      } else if key == "deck" {
-        assert(type(value) == str, message: "Default deck must be a string")
-      } else if key == "tags" {
-        assert(type(value) == array, message: "Default tags must be an array")
-      } else if key == "format" {
-        assert(
-          type(value) == str and value in ("svg", "png", "plain"),
-          message: "Default format must be one of: \"svg\", \"png\", \"plain\"",
-        )
-      } else if key == "data" {
-        _validate-data(data: value)
-      } else if key == "other" {
-        assert(type(value) == dictionary, message: "Default other must be a dictionary")
-      } else {
-        panic("Unknown default key: " + key + ". Valid keys are: model, deck, tags, data, other")
-      }
-    }
-  }
+    new-config = merge(
+      config,
+      new-config,
+    )
 
-  ankify-configuration.update(config => {
-    // Update configuration with provided values
-    if (ankiconnect-url != none) { config.ankiconnect-url = ankiconnect-url }
-    if (verbose != none) { config.verbose = verbose }
-    if (defaults != none) { config.defaults = defaults }
-    if (render != none) { config.render = render }
-    if (cache.enabled != none) { config.cache.enabled = cache.enabled }
-    if (cache.custom-file != none) { config.cache.custom-file = cache.custom-file }
-    if (checks != none) { config.checks = checks }
+    // Type-check arguments
+    new-config = z.parse(new-config, configuration-schema)
 
-    // Return updated configuration
-    config
+    config = new-config
+
+    new-config
   })
   context {
-    [#metadata(ankify-configuration.get()) <ankify-configuration>]
+    [#metadata(__ankify-configuration.get()) <ankify-configuration>]
   }
 }
 

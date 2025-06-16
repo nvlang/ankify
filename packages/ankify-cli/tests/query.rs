@@ -46,7 +46,8 @@ async fn test_query_ankify_configuration_success() {
         Some("http://localhost:8765".to_string())
     );
     assert_eq!(config.verbose, Some(false));
-    assert_eq!(config.render, Some("ankify-render".to_string()));
+    // render field is now in defaults, not top-level
+    assert!(config.setup.is_some()); // setup function should be present
 
     // Check cache options
     assert!(config.cache.is_some());
@@ -60,8 +61,8 @@ async fn test_query_ankify_configuration_success() {
 
     assert!(checks.typst.is_some());
     let typst_checks = checks.typst.unwrap();
-    assert_eq!(typst_checks.data, Some(true));
-    assert_eq!(typst_checks.format, Some(true));
+    // typst checks is now a simple boolean
+    assert_eq!(typst_checks, true);
 
     assert!(checks.ankiconnect.is_some());
     let anki_checks = checks.ankiconnect.unwrap();
@@ -184,7 +185,7 @@ async fn test_query_with_custom_configuration() {
         Some("http://custom:9999".to_string())
     );
     assert_eq!(config.verbose, Some(true));
-    assert_eq!(config.render, Some("custom-render".to_string()));
+    // render field is no longer a top-level string field
 
     // Check custom cache settings
     let cache = config.cache.unwrap();
@@ -194,8 +195,8 @@ async fn test_query_with_custom_configuration() {
     // Check custom check settings
     let checks = config.checks.unwrap();
     let typst_checks = checks.typst.unwrap();
-    assert_eq!(typst_checks.data, Some(false));
-    assert_eq!(typst_checks.format, Some(false));
+    // typst checks is now a simple boolean
+    assert_eq!(typst_checks, false);
 
     let anki_checks = checks.ankiconnect.unwrap();
     assert_eq!(anki_checks.model, Some(false));
@@ -300,7 +301,7 @@ async fn test_advanced_configuration_and_notes() {
         Some("http://advanced:9000".to_string())
     );
     assert_eq!(config.verbose, Some(true));
-    assert_eq!(config.render, Some("advanced-render".to_string()));
+    // render field is no longer a top-level string field
 
     // Check defaults
     assert!(config.defaults.is_some());

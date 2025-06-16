@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 /// Configuration, as specified by the metadata embedded in the Typst file and
 /// queried by the `query` module.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TypstAnkifyConfiguration {
     /// AnkiConnect URL.
     ///
@@ -19,10 +19,10 @@ pub struct TypstAnkifyConfiguration {
     /// Default: `false`
     pub verbose: Option<bool>,
 
-    /// Name of render function to import in temp Typst file.
+    /// Setup function (stored as opaque value since it's a function).
     ///
-    /// Default: `"ankify-render"`
-    pub render: Option<String>,
+    /// Default: page setup function
+    pub setup: Option<serde_json::Value>,
 
     /// Cache options.
     pub cache: Option<CacheOptions>,
@@ -53,7 +53,7 @@ pub struct CacheOptions {
     pub custom_file: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Checks {
     /// Checks to perform within Typst itself. These are mainly type-safety
     /// related checks.
@@ -78,37 +78,10 @@ pub struct Checks {
     pub ankiconnect: Option<AnkiConnectChecks>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TypstChecks {
-    /// Controls whether Typst will ensure that the data dictionary is
-    /// well-formed, i.e., formatted like
-    ///
-    /// ```json
-    /// "data": { "field": "content" }
-    /// ```
-    ///
-    /// ...or...
-    ///
-    /// ```json
-    /// "data": { "field": { "value": "content" } }
-    /// ```
-    ///
-    /// ...or...
-    ///
-    /// ```json
-    /// "data": {
-    ///   "field": {
-    ///     "value": "content",
-    ///     "format": "svg"
-    ///   }
-    /// }
-    /// ```
-    pub data: Option<bool>,
-
-    /// Controls whether Typst will ensure that all specified formats are one of
-    /// the supported formats, i.e., one of `"png"`, `"svg"`, or `"plain"`.
-    pub format: Option<bool>,
-}
+/// Controls whether Typst will perform validation checks.
+///
+/// This includes data dictionary validation and format validation.
+pub type TypstChecks = bool;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnkiConnectChecks {
@@ -155,7 +128,7 @@ pub struct Note {
     pub format: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NoteDataValue {
     /// The value of the data field, as a simple string.
@@ -179,7 +152,7 @@ pub struct NoteDataValueWithFormat {
     pub format: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoteDefaults {
     /// The default model to use for notes.
     ///
@@ -189,7 +162,7 @@ pub struct NoteDefaults {
     /// The default data dictionary for notes.
     ///
     /// Default: `none`
-    pub data: Option<HashMap<String, NoteDataValue>>,
+    pub data: Option<serde_json::Value>,
 
     /// The default deck to which to add notes.
     ///
@@ -207,10 +180,20 @@ pub struct NoteDefaults {
     /// Rust's type system.
     ///
     /// Default: `none`
-    pub other: Option<HashMap<String, serde_json::Value>>,
+    pub other: Option<serde_json::Value>,
 
     /// The format in which the note's fields should be rendered by default.
     ///
     /// Default: `"png"`
     pub format: Option<String>,
+
+    /// Default render function (stored as opaque value since it's a function).
+    ///
+    /// Default: identity function that returns field content
+    pub render: Option<serde_json::Value>,
+
+    /// Default label (typically None for defaults).
+    ///
+    /// Default: `none`
+    pub label: Option<String>,
 }

@@ -4,7 +4,7 @@
 // Used to test that notes can be queried even without explicit configuration
 
 #note(
-  label: "basic-addition",
+  "basic-addition",
   deck: "Math-Basics",
   model: "Basic",
   format: "plain",
@@ -16,7 +16,7 @@
 )
 
 #note(
-  label: "simple-geometry",
+  "simple-geometry",
   deck: "Math-Basics",
   model: "Basic",
   format: "svg",

@@ -1,9 +1,14 @@
 #import "../../../../ankify-typst/lib.typ": note, configure
 
-#configure()
+#configure(
+  defaults: (
+    deck: "Ankify-Test",
+    tags: ("str",),
+  ),
+)
 
 #note(
-  label: "pythagoras-theorem",
+  "pythagoras-theorem",
   deck: "Ankify-Test",
   model: "Basic",
   format: "png",
@@ -14,7 +19,7 @@
 )
 
 #note(
-  label: "quadratic-formula",
+  "quadratic-formula",
   deck: "Ankify-Test",
   model: "Basic",
   format: "svg",
@@ -23,4 +28,3 @@
     Back: [For $a x^2 + b x + c = 0$: $ x = 1 / 2 $],
   ),
 )
-

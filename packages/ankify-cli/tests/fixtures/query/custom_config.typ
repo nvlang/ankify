@@ -3,26 +3,22 @@
 #configure(
   ankiconnect-url: "http://custom:9999",
   verbose: true,
-  render: "custom-render",
   cache: (
     enabled: false,
-    custom-file: "custom.json"
+    custom-file: "custom.json",
   ),
   checks: (
-    typst: (
-      data: false,
-      format: false
-    ),
+    typst: false,
     ankiconnect: (
       model: false,
       deck: false,
-      tags: false
-    )
-  )
+      tags: false,
+    ),
+  ),
 )
 
 #note(
-  label: "custom-note",
+  "custom-note",
   deck: "Custom-Deck",
   model: "Custom-Model",
   format: "plain",

@@ -4,12 +4,11 @@
 #configure(
   ankiconnect-url: "http://localhost:8765",
   verbose: false,
-  render: "ankify-render",
 )
 
 // Note with simple string data types
 #note(
-  label: "simple-strings",
+  "simple-strings",
   deck: "Test-Deck",
   model: "Basic",
   format: "plain",
@@ -23,7 +22,7 @@
 
 // Note with complex Typst content and mixed data types
 #note(
-  label: "complex-content",
+  "complex-content",
   deck: "Test-Deck",
   model: "Basic",
   format: "svg",

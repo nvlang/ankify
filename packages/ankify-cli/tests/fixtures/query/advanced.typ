@@ -4,16 +4,12 @@
 #configure(
   ankiconnect-url: "http://advanced:9000",
   verbose: true,
-  render: "advanced-render",
   cache: (
     enabled: true,
     custom-file: "advanced.json",
   ),
   checks: (
-    typst: (
-      data: true,
-      format: true,
-    ),
+    typst: true,
     ankiconnect: (
       model: true,
       deck: true,
@@ -30,7 +26,7 @@
 
 // Advanced math note
 #note(
-  label: "advanced-math",
+  "advanced-math",
   deck: "Mathematics",
   model: "Basic",
   format: "svg",
@@ -42,7 +38,7 @@
 
       #block[
         This follows from the fundamental trigonometric limit:
-        $lim_(h -> 0) (sin(h))/h = 1$
+        $lim_(h -> 0) (sin(h)) / h = 1$
       ]
     ],
     Extra: "This is a fundamental result in calculus",
@@ -51,7 +47,7 @@
 
 // Programming concept note
 #note(
-  label: "programming-concept",
+  "programming-concept",
   deck: "Computer Science",
   model: "Basic",
   format: "plain",
