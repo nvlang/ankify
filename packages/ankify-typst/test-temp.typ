@@ -5,7 +5,6 @@
 
 #context {
   (__ankify-configuration.final().setup)()
-
   for note in __ankify-notes.final() {
     for (field, value) in note.data {
       let field-content = none
