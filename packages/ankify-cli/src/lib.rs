@@ -7,3 +7,4 @@ pub mod error;
 pub mod generate;
 pub mod metadata;
 pub mod query;
+pub mod sync;
