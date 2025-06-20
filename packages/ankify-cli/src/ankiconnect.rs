@@ -62,15 +62,11 @@ impl Field {
     }
 }
 
-new_type!(FieldValue, String);
+new_type!(FieldValue, Option<String>);
 
 impl FieldValue {
-    pub fn new(value: String) -> Self {
+    pub fn new(value: Option<String>) -> Self {
         FieldValue(value)
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
     }
 }
 
@@ -114,7 +110,7 @@ pub struct AnkiResponse<T> {
 }
 
 // Media file structure
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MediaFile {
     pub filename: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -130,7 +126,7 @@ pub struct MediaFile {
 }
 
 // Note structures
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Note {
     #[serde(rename = "deckName")]
     pub deck_name: Deck,
@@ -149,7 +145,7 @@ pub struct Note {
     pub picture: Option<Vec<MediaFile>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NoteUpdate {
     pub id: NoteId,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -167,7 +163,7 @@ pub struct NoteUpdate {
     pub picture: Option<Vec<MediaFile>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NoteOptions {
     #[serde(rename = "allowDuplicate", skip_serializing_if = "Option::is_none")]
     pub allow_duplicate: Option<bool>,
@@ -180,7 +176,7 @@ pub struct NoteOptions {
     pub duplicate_scope_options: Option<DuplicateScopeOptions>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DuplicateScopeOptions {
     #[serde(rename = "deckName", skip_serializing_if = "Option::is_none")]
     pub deck_name: Option<String>,

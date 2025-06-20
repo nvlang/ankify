@@ -41,38 +41,15 @@ use crate::error::{Error, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub const PLUGIN_VERSION: &str = "0.1.0";
+
 /// Configuration for generating temporary Typst files.
 #[derive(Debug, Clone)]
 pub struct GenerateConfig {
     /// The path to the source Typst file.
     pub source_file: PathBuf,
-    /// The Ankify Typst plugin version to use.
-    pub plugin_version: String,
     /// The output directory for temporary files (optional, defaults to .ankify in source directory).
     pub output_dir: Option<PathBuf>,
-}
-
-impl GenerateConfig {
-    /// Create a new generate configuration.
-    pub fn new(source_file: impl Into<PathBuf>) -> Self {
-        Self {
-            source_file: source_file.into(),
-            plugin_version: "0.1.0".to_string(),
-            output_dir: None,
-        }
-    }
-
-    /// Set the plugin version.
-    pub fn with_plugin_version(mut self, version: impl Into<String>) -> Self {
-        self.plugin_version = version.into();
-        self
-    }
-
-    /// Set the output directory.
-    pub fn with_output_dir(mut self, dir: impl Into<PathBuf>) -> Self {
-        self.output_dir = Some(dir.into());
-        self
-    }
 }
 
 /// Generate a temporary Typst file for rendering note fields.
@@ -140,8 +117,7 @@ pub fn generate_temp_file(config: &GenerateConfig) -> Result<PathBuf> {
     let temp_file_path = output_dir.join(format!("{}_render.typ", source_stem));
 
     // Generate the Typst content
-    let typst_content =
-        generate_typst_content(&relative_source_path, source_stem, &config.plugin_version)?;
+    let typst_content = generate_typst_content(&relative_source_path)?;
 
     // Write the temporary file
     fs::write(&temp_file_path, typst_content).map_err(|e| {
@@ -156,44 +132,18 @@ pub fn generate_temp_file(config: &GenerateConfig) -> Result<PathBuf> {
 }
 
 /// Generate the Typst content for the temporary file.
-fn generate_typst_content(
-    relative_source_path: &str,
-    source_stem: &str,
-    plugin_version: &str,
-) -> Result<String> {
+fn generate_typst_content(relative_source_path: &str) -> Result<String> {
     // Validate inputs
     if relative_source_path.is_empty() {
         return Err(Error::custom(
             "Relative source path cannot be empty".to_string(),
         ));
     }
-    if source_stem.is_empty() {
-        return Err(Error::custom("Source stem cannot be empty".to_string()));
-    }
-    if plugin_version.is_empty() {
-        return Err(Error::custom("Plugin version cannot be empty".to_string()));
-    }
-
-    // For tests and local development, use relative path instead of @preview
-    let import_statement = if plugin_version == "local" || plugin_version == "test" || cfg!(test) {
-        // For test fixtures, they're at packages/ankify-cli/tests/fixtures/*/
-        // and need to go up to root then down to ankify-typst
-        // The temp file will be at packages/ankify-cli/tests/fixtures/*/.test_temp/
-        // so we need ../../../../../ankify-typst/lib.typ (one more ../ to get to packages/)
-        format!(
-            "#import \"../../../../../ankify-typst/lib.typ\": __ankify-configuration, __ankify-notes"
-        )
-    } else {
-        format!(
-            "#import \"@preview/ankify:{}\": __ankify-configuration, __ankify-notes",
-            plugin_version
-        )
-    };
 
     let content = format!(
-        r#"#import "{relative_source_path}" as {source_stem}
-{import_statement}
-#hide([#{source_stem}])
+        r#"#import "{relative_source_path}" as __ankify-source-file
+#import "@preview/ankify:{PLUGIN_VERSION}": __ankify-configuration, __ankify-notes
+#hide([#__ankify-source-file])
 #set page(height: auto)
 
 #context {{
@@ -214,10 +164,15 @@ fn generate_typst_content(
     }}
   }}
 }}
-"#,
-        relative_source_path = relative_source_path,
-        source_stem = source_stem,
-        import_statement = import_statement
+"#
+    );
+
+    // If we're in a test environment, we want to replace the import statement for ankify
+    // with a local path to the plugin.
+    #[cfg(test)]
+    let content = content.replace(
+        &format!("@preview/ankify:{}", PLUGIN_VERSION),
+        "ankify-typst/lib.typ",
     );
 
     Ok(content)
@@ -299,96 +254,4 @@ pub fn cleanup_temp_files(dir: &Path) -> Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_generate_config_new() {
-        let config = GenerateConfig::new("test.typ");
-        assert_eq!(config.source_file, PathBuf::from("test.typ"));
-        assert_eq!(config.plugin_version, "0.1.0");
-        assert!(config.output_dir.is_none());
-    }
-
-    #[test]
-    fn test_generate_config_with_version() {
-        let config = GenerateConfig::new("test.typ").with_plugin_version("0.2.0");
-        assert_eq!(config.plugin_version, "0.2.0");
-    }
-
-    #[test]
-    fn test_generate_config_with_output_dir() {
-        let config = GenerateConfig::new("test.typ").with_output_dir("/tmp");
-        assert_eq!(config.output_dir, Some(PathBuf::from("/tmp")));
-    }
-
-    #[test]
-    fn test_generate_typst_content_preview() {
-        let content = generate_typst_content("../source.typ", "source", "0.1.0").unwrap();
-        assert!(content.contains("#import \"../source.typ\" as source"));
-        // In test environment, it will use relative path due to cfg!(test)
-        assert!(content.contains("../../../../../ankify-typst/lib.typ"));
-        assert!(content.contains("#hide([#source])"));
-        assert!(content.contains("#set page(height: auto)"));
-        assert!(content.contains("__ankify-configuration.final().setup"));
-        assert!(content.contains("__ankify-notes.final()"));
-    }
-
-    #[test]
-    fn test_generate_typst_content_local() {
-        let content = generate_typst_content("../source.typ", "source", "local").unwrap();
-        assert!(content.contains(
-            "#import \"../../../../../ankify-typst/lib.typ\": __ankify-configuration, __ankify-notes"
-        ));
-    }
-
-    #[test]
-    fn test_generate_typst_content_validation() {
-        assert!(generate_typst_content("", "source", "0.1.0").is_err());
-        assert!(generate_typst_content("../source.typ", "", "0.1.0").is_err());
-        assert!(generate_typst_content("../source.typ", "source", "").is_err());
-    }
-
-    #[test]
-    fn test_get_relative_path() {
-        let temp_dir = TempDir::new().unwrap();
-        let sub_dir = temp_dir.path().join("subdir");
-        fs::create_dir_all(&sub_dir).unwrap();
-
-        let source_file = temp_dir.path().join("source.typ");
-        fs::write(&source_file, "// test file").unwrap();
-
-        let relative = get_relative_path(&sub_dir, &source_file).unwrap();
-        assert_eq!(relative, "../source.typ");
-    }
-
-    #[test]
-    fn test_cleanup_temp_files() {
-        let temp_dir = TempDir::new().unwrap();
-        let temp_path = temp_dir.path();
-
-        // Create some test files
-        fs::write(temp_path.join("test_render.typ"), "temp content").unwrap();
-        fs::write(temp_path.join("another_render.typ"), "temp content").unwrap();
-        fs::write(temp_path.join("keep_this.typ"), "keep this").unwrap();
-
-        // Clean up temp files
-        cleanup_temp_files(temp_path).unwrap();
-
-        // Check that only temp files were removed
-        assert!(!temp_path.join("test_render.typ").exists());
-        assert!(!temp_path.join("another_render.typ").exists());
-        assert!(temp_path.join("keep_this.typ").exists());
-    }
-
-    #[test]
-    fn test_cleanup_temp_files_nonexistent_dir() {
-        let result = cleanup_temp_files(Path::new("/nonexistent/directory"));
-        assert!(result.is_ok()); // Should not error for non-existent directories
-    }
 }

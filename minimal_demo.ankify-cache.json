@@ -1,0 +1,58 @@
+{
+  "minimal-demo-unique-test-2": {
+    "label": "minimal-demo-unique-test-2",
+    "id": 1750185476279,
+    "tags": [
+      "ankify",
+      "minimal"
+    ],
+    "hash": {
+      "Back": "fc09b38f353554beeef038d73180be678b144384d1a137b3f84b9650b3de04c1",
+      "Front": "21807ca15c698174a61b617bed4a73dd83cbeadf4f229601007aa9f59eecb6ef"
+    },
+    "deck": "Ankify Minimal Demo",
+    "model": "Basic"
+  },
+  "minimal-demo-unique-test-1": {
+    "label": "minimal-demo-unique-test-1",
+    "id": 1750185476277,
+    "tags": [
+      "ankify",
+      "minimal"
+    ],
+    "hash": {
+      "Back": "3fdba35f04dc8c462986c992bcf875546257113072a909c162f7e470e581e278",
+      "Front": "8afff9eb168e831c5cd9cb5d6402f546a63a026c9ae369b33a327e3323b997ab"
+    },
+    "deck": "Ankify Minimal Demo",
+    "model": "Basic"
+  },
+  "minimal-demo-unique-test-3": {
+    "label": "minimal-demo-unique-test-3",
+    "id": 1750185476280,
+    "tags": [
+      "ankify",
+      "minimal"
+    ],
+    "hash": {
+      "Back": "1a9210ccbccd997cebdcfa34c11ae6addf3feb83527405e72f957378913e4c24",
+      "Front": "0cf2c772b8beca94f92847c21c109771526b8afbe51d1d0d6d139135721a0f34"
+    },
+    "deck": "Ankify Minimal Demo",
+    "model": "Basic"
+  },
+  "minimal-demo-unique-test-4": {
+    "label": "minimal-demo-unique-test-4",
+    "id": 1750185973886,
+    "tags": [
+      "ankify",
+      "minimal2"
+    ],
+    "hash": {
+      "Front": "51a386dd741058e24b9bfaa180ed7ef16ff8d5f04008668cc8589db4c419b67c",
+      "Back": "1cc33182e01066eb337ff8616eb52e7f5a98692cd8a1671a717d0ad19ec3e4c2"
+    },
+    "deck": "Ankify Minimal Demo",
+    "model": "Basic"
+  }
+}

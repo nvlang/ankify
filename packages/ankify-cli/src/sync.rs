@@ -102,6 +102,161 @@
 //!     Delete the temporary file that were generated in step 2, and the output
 //!     files that were produced in step 3.
 
+//! ## Technical Implementation Overview
+//!
+//! The sync module implements the above workflow through the following key components:
+//!
+//! ### Main Entry Point
+//! - `sync(config: SyncConfig)` - Public API that orchestrates the entire sync process
+//! - `sync_internal(ctx: &mut SyncContext, result: &mut SyncResult)` - Internal implementation
+//!
+//! ### Core Data Structures
+//! - `SyncContext` - Holds all state needed for sync operation (config, cache, clients, temp files)
+//! - `ProcessedNote` - Represents a note with metadata, compiled Anki note, field hashes, and new/update status
+//! - `RequestList` - Contains AnkiConnect requests to be executed, supports both single and multi-request batches
+//!
+//! ### Compilation Pipeline
+//! 1. `generate_temp_file()` - Creates temporary Typst file that imports source and renders all fields
+//! 2. `compile_temp_file()` - Runs Typst compilation to generate PNG/SVG output files for each field
+//! 3. `associate_files_with_notes()` - Maps output files to specific note fields using alphabetical ordering
+//! 4. `create_media_file()` - Creates MediaFile objects with base64-encoded data and proper filename format
+//!
+//! ### Field Processing Logic
+//! - Fields with `format: "plain"` → Direct text content, no compilation
+//! - Fields with `format: "png"` or `format: "svg"` → Compiled to images, referenced by filename
+//! - Default format (PNG) applied when no explicit format specified
+//! - AnkiConnect automatically generates `<img>` tags from filenames in `picture` array
+//!
+//! ### Request Generation
+//! - `create_request_list()` - Analyzes processed notes to determine required AnkiConnect operations
+//! - Deck creation requests generated first for any new decks
+//! - `AddNotes` requests for truly new notes (not in cache)
+//! - `UpdateNote` requests for existing notes with changed field hashes
+//! - Requests batched using `multi: true` for efficiency
+//!
+//! ### Execution and Caching
+//! - `execute_requests()` - Sends requests to AnkiConnect sequentially to maintain proper ordering
+//! - `update_cache_with_added_notes()` - Updates cache with new note IDs returned by AnkiConnect
+//! - Field hashing using `cache.create_field_hashes_from_note_data()` for change detection
+//! - Cache persistence for subsequent runs to enable incremental updates
+
+use crate::ankiconnect::{AnkiAction, AnkiConnect, Field, Note as AnkiNote, NoteId};
+use crate::cache::{Cache, Sha256};
+use crate::compile::{compile_temp_file, CompileConfig};
+use crate::error::{Error, Result};
+use crate::generate::generate_temp_file;
+use crate::metadata::CompletedNote;
+use crate::query::{
+    complete_ankify_notes_metadata, query_ankify_configuration, query_ankify_notes,
+};
+
+use reqwest::Client;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use tokio::fs;
+use tracing::{info, warn};
+
+/// Configuration for the sync operation.
+#[derive(Debug, Clone)]
+pub struct SyncConfig {
+    /// Path to the Typst source file.
+    pub source_file: PathBuf,
+    /// Whether to enable verbose output.
+    pub verbose: bool,
+    /// Optional custom cache file path.
+    pub cache_file: Option<PathBuf>,
+    /// Optional custom AnkiConnect URL.
+    pub ankiconnect_url: Option<String>,
+    /// Extra arguments to pass to Typst commands.
+    pub extra_args: Vec<String>,
+    /// Whether this is running in CLI context (affects progress reporting).
+    pub cli_mode: bool,
+}
+
+impl SyncConfig {
+    /// Create a new sync configuration.
+    pub fn new<P: Into<PathBuf>>(source_file: P) -> Self {
+        Self {
+            source_file: source_file.into(),
+            verbose: false,
+            cache_file: None,
+            ankiconnect_url: None,
+            extra_args: Vec::new(),
+            cli_mode: false,
+        }
+    }
+
+    /// Enable verbose output.
+    pub fn with_verbose(mut self, verbose: bool) -> Self {
+        self.verbose = verbose;
+        self
+    }
+
+    /// Set custom cache file path.
+    pub fn with_cache_file<P: Into<PathBuf>>(mut self, cache_file: P) -> Self {
+        self.cache_file = Some(cache_file.into());
+        self
+    }
+
+    /// Set custom AnkiConnect URL.
+    pub fn with_ankiconnect_url<S: Into<String>>(mut self, url: S) -> Self {
+        self.ankiconnect_url = Some(url.into());
+        self
+    }
+
+    /// Set extra arguments for Typst commands.
+    pub fn with_extra_args(mut self, args: Vec<String>) -> Self {
+        self.extra_args = args;
+        self
+    }
+
+    /// Enable CLI mode for progress reporting.
+    pub fn with_cli_mode(mut self, cli_mode: bool) -> Self {
+        self.cli_mode = cli_mode;
+        self
+    }
+}
+
+/// Result of a sync operation.
+#[derive(Debug)]
+pub struct SyncResult {
+    /// Number of notes added to Anki.
+    pub notes_added: usize,
+    /// Number of notes updated in Anki.
+    pub notes_updated: usize,
+    /// Number of notes that were already up to date.
+    pub notes_unchanged: usize,
+    /// Number of decks created.
+    pub decks_created: usize,
+    /// List of any errors that occurred but didn't prevent the sync.
+    pub warnings: Vec<String>,
+}
+
+impl SyncResult {
+    /// Create a new empty sync result.
+    pub fn new() -> Self {
+        Self {
+            notes_added: 0,
+            notes_updated: 0,
+            notes_unchanged: 0,
+            decks_created: 0,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Get the total number of notes processed.
+    pub fn total_notes(&self) -> usize {
+        self.notes_added + self.notes_updated + self.notes_unchanged
+    }
+}
+
+impl Default for SyncResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RequestList {
     /// Indicates whether the requests should be sent to AnkiConnect
     /// inside of a `"multi"` request or not.
@@ -111,6 +266,7 @@ pub struct RequestList {
     pub requests: Vec<RequestOrRequestList>,
 }
 
+#[derive(Debug, Clone)]
 pub enum RequestOrRequestList {
     /// A single request to be sent to AnkiConnect.
     Single(serde_json::Value),
@@ -118,4 +274,536 @@ pub enum RequestOrRequestList {
     /// A list of requests to be sent to AnkiConnect. Note that the `sequential`
     /// field must be respected when processing this list.
     List(RequestList),
+}
+
+/// Internal structure for tracking note processing.
+#[derive(Debug)]
+struct ProcessedNote {
+    /// The metadata note from Typst.
+    metadata: CompletedNote,
+    /// The compiled Anki note with media files.
+    anki_note: AnkiNote,
+    /// Field content hashes for cache comparison.
+    field_hashes: HashMap<Field, Option<Sha256>>,
+    /// Whether this is a new note or an update.
+    is_new: bool,
+}
+
+/// Context for the sync operation.
+struct SyncContext {
+    config: SyncConfig,
+    anki_client: AnkiConnect,
+    http_client: Client,
+    cache: Cache,
+    temp_files: Vec<PathBuf>,
+    output_files: Vec<PathBuf>,
+}
+
+impl SyncContext {
+    /// Create a new sync context.
+    async fn new(config: SyncConfig) -> Result<Self> {
+        // Load cache
+        let cache = if let Some(cache_file) = &config.cache_file {
+            Cache::load_from_file(cache_file).await?
+        } else {
+            // Default cache file location
+            let cache_file = config.source_file.with_extension("ankify-cache.json");
+            Cache::load_from_file(cache_file).await?
+        };
+
+        // Create AnkiConnect client
+        let anki_client = if let Some(url) = &config.ankiconnect_url {
+            AnkiConnect::with_url(url.clone())
+        } else {
+            AnkiConnect::new()
+        };
+
+        let http_client = Client::new();
+
+        Ok(Self {
+            config,
+            anki_client,
+            http_client,
+            cache,
+            temp_files: Vec::new(),
+            output_files: Vec::new(),
+        })
+    }
+
+    /// Clean up temporary files and output files.
+    async fn cleanup(&self) -> Result<()> {
+        for file in &self.temp_files {
+            if file.exists() {
+                if let Err(e) = fs::remove_file(file).await {
+                    warn!("Failed to remove temporary file {}: {}", file.display(), e);
+                }
+            }
+        }
+
+        for file in &self.output_files {
+            if file.exists() {
+                if let Err(e) = fs::remove_file(file).await {
+                    warn!("Failed to remove output file {}: {}", file.display(), e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Save the cache.
+    async fn save_cache(&self) -> Result<()> {
+        self.cache.save().await
+    }
+}
+
+/// The main sync function that orchestrates the entire synchronization process.
+pub async fn sync(config: SyncConfig) -> Result<SyncResult> {
+    if config.cli_mode {
+        info!("Starting Ankify sync for {}", config.source_file.display());
+    }
+
+    let mut ctx = SyncContext::new(config).await?;
+    let mut result = SyncResult::new();
+
+    // Ensure cleanup happens even if we encounter errors
+    let sync_result = sync_internal(&mut ctx, &mut result).await;
+
+    // // Always try to clean up
+    // if let Err(e) = ctx.cleanup().await {
+    //     warn!("Cleanup failed: {}", e);
+    // }
+
+    // Always try to save cache if there were any changes
+    if let Err(e) = ctx.save_cache().await {
+        warn!("Failed to save cache: {}", e);
+    }
+
+    sync_result.map(|_| result)
+}
+
+/// Internal sync implementation.
+async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result<()> {
+    // Step 1: Check AnkiConnect
+    check_ankiconnect(&ctx.anki_client, &ctx.http_client).await?;
+
+    // Step 2: Generate temp file (cache has been read already during creation of SyncContext)
+    let temp_file = generate_temp_file(&crate::generate::GenerateConfig {
+        source_file: ctx.config.source_file.clone(),
+        output_dir: None,
+    })?;
+    ctx.temp_files.push(temp_file.clone());
+
+    // Step 3: Query Typst for configuration and notes (in parallel)
+    let extra_args = vec!["--root", "."];
+    let (ankify_config, metadata_notes) = tokio::try_join!(
+        query_ankify_configuration(&ctx.config.source_file, Some(&extra_args)),
+        query_ankify_notes(&ctx.config.source_file, Some(&extra_args))
+    )?;
+
+    if metadata_notes.is_empty() {
+        if ctx.config.cli_mode {
+            info!("No notes found in {}", ctx.config.source_file.display());
+        }
+        return Ok(());
+    }
+
+    if ctx.config.cli_mode {
+        info!("Found {} notes to process", metadata_notes.len());
+    }
+
+    let completed_metadata_notes = complete_ankify_notes_metadata(metadata_notes, &ankify_config);
+
+    // Step 3 continued: Compile the temporary file to generate output files
+    let compile_config = CompileConfig::new(
+        temp_file.clone(),
+        ctx.config.source_file.clone(),
+        temp_file.parent().unwrap().join("output"),
+        completed_metadata_notes.clone(),
+    );
+
+    // Create output directory
+    tokio::fs::create_dir_all(&compile_config.output_dir)
+        .await
+        .map_err(|e| Error::custom(format!("Failed to create output directory: {}", e)))?;
+
+    let compile_result = compile_temp_file(&compile_config).await?;
+    ctx.output_files.extend(compile_result.output_files);
+
+    // Step 4: Pick output files (done by compilation)
+    // Step 5: Hash files (in parallel)
+    let processed_notes =
+        process_notes_with_hashes(&completed_metadata_notes, &compile_result.notes, &ctx.cache)
+            .await?;
+
+    // Step 6: Decision-making - create RequestList
+    let request_list = create_request_list(&processed_notes, &ctx.cache, &ctx.anki_client).await?;
+
+    // Step 7: Execution - send requests to AnkiConnect
+    execute_requests(
+        &request_list,
+        &ctx.anki_client,
+        &ctx.http_client,
+        &mut ctx.cache,
+        result,
+        &processed_notes,
+    )
+    .await?;
+
+    if ctx.config.cli_mode {
+        info!(
+            "Sync completed: {} added, {} updated, {} unchanged",
+            result.notes_added, result.notes_updated, result.notes_unchanged
+        );
+    }
+
+    Ok(())
+}
+
+/// Check if AnkiConnect is running and accessible.
+async fn check_ankiconnect(anki_client: &AnkiConnect, http_client: &Client) -> Result<()> {
+    let request = anki_client.action_to_request(AnkiAction::Version);
+
+    let response = http_client
+        .post(anki_client.url())
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| Error::anki_connect(format!("Failed to connect to AnkiConnect: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(Error::anki_connect(format!(
+            "AnkiConnect returned status: {}",
+            response.status()
+        )));
+    }
+
+    let response_text = response
+        .text()
+        .await
+        .map_err(|e| Error::anki_connect(format!("Failed to read AnkiConnect response: {}", e)))?;
+
+    let version: u32 = anki_client
+        .parse_response(&response_text)
+        .map_err(|e| Error::anki_connect(format!("Failed to parse version response: {}", e)))?;
+
+    if version < 6 {
+        return Err(Error::anki_connect(format!(
+            "AnkiConnect version {} is too old, need at least version 6",
+            version
+        )));
+    }
+
+    Ok(())
+}
+
+/// Process notes and create field hashes for comparison.
+async fn process_notes_with_hashes(
+    metadata_notes: &[CompletedNote],
+    anki_notes: &[AnkiNote],
+    cache: &Cache,
+) -> Result<Vec<ProcessedNote>> {
+    // Create futures for all note processing operations
+    let futures: Vec<_> = metadata_notes
+        .iter()
+        .zip(anki_notes.iter())
+        .map(|(metadata_note, anki_note)| async move {
+            // Create field hashes using the cache's hashing method which properly handles media vs text
+            let field_hashes = cache.create_field_hashes(anki_note, metadata_note).await?;
+
+            // Check if this is a new note or an update
+            let existing_entry = cache.get(&metadata_note.label);
+            let is_new = existing_entry.is_none();
+
+            Ok::<ProcessedNote, Error>(ProcessedNote {
+                metadata: (*metadata_note).clone(),
+                anki_note: (*anki_note).clone(),
+                field_hashes,
+                is_new,
+            })
+        })
+        .collect();
+
+    // Process all notes in parallel
+    let results = futures::future::join_all(futures).await;
+
+    // Collect results, propagating any errors
+    let mut processed_notes = Vec::new();
+    for result in results {
+        processed_notes.push(result?);
+    }
+
+    Ok(processed_notes)
+}
+
+/// Create the request list for AnkiConnect operations.
+async fn create_request_list(
+    processed_notes: &[ProcessedNote],
+    cache: &Cache,
+    anki_client: &AnkiConnect,
+) -> Result<RequestList> {
+    let mut requests = Vec::new();
+
+    // Collect all decks that need to be created
+    let mut decks_to_create = HashSet::new();
+    let mut existing_decks = HashSet::new();
+
+    // First, collect existing decks from cache
+    for entry in cache.entries().values() {
+        existing_decks.insert(entry.deck.as_str().to_string());
+    }
+
+    // Check which decks need to be created
+    for note in processed_notes {
+        if note.is_new {
+            let deck_name = note.anki_note.deck_name.as_str().to_string();
+            if !existing_decks.contains(&deck_name) {
+                decks_to_create.insert(deck_name);
+            }
+        }
+    }
+
+    // Create deck creation requests if needed
+    if !decks_to_create.is_empty() {
+        let mut deck_requests = Vec::new();
+        for deck in decks_to_create {
+            let request = anki_client.action_to_request(AnkiAction::CreateDeck { deck });
+            deck_requests.push(RequestOrRequestList::Single(request));
+        }
+
+        if deck_requests.len() == 1 {
+            requests.extend(deck_requests);
+        } else {
+            requests.push(RequestOrRequestList::List(RequestList {
+                multi: true,
+                requests: deck_requests,
+            }));
+        }
+    }
+
+    // Filter notes to only include truly new ones (not in cache)
+    let truly_new_notes: Vec<_> = processed_notes
+        .iter()
+        .filter(|note| !cache.contains(&note.metadata.label))
+        .collect();
+
+    // Create addNotes request for truly new notes only
+    if !truly_new_notes.is_empty() {
+        let notes: Vec<AnkiNote> = truly_new_notes
+            .iter()
+            .map(|pn| (*pn).anki_note.clone())
+            .collect();
+        let request = anki_client.action_to_request(AnkiAction::AddNotes { notes });
+        requests.push(RequestOrRequestList::Single(request));
+    }
+
+    // Create update requests for existing notes that have changed
+    let notes_to_update: Vec<_> = processed_notes
+        .iter()
+        .filter(|note| !note.is_new)
+        .filter(|note| {
+            // Check if the note has changed by comparing hashes
+            if let Some(cached_entry) = cache.get(&note.metadata.label) {
+                // Compare field hashes to see if anything changed
+                for (field, new_hash) in &note.field_hashes {
+                    if let Some(cached_hash) = cached_entry.hash.get(field) {
+                        if cached_hash != new_hash {
+                            return true; // Field has changed
+                        }
+                    } else {
+                        return true; // New field added
+                    }
+                }
+                // Check if any fields were removed
+                for field in cached_entry.hash.keys() {
+                    if !note.field_hashes.contains_key(field) {
+                        return true; // Field was removed
+                    }
+                }
+                false // No changes
+            } else {
+                true // Should not happen, but treat as changed
+            }
+        })
+        .collect();
+
+    // Create updateNote requests for changed notes
+    if !notes_to_update.is_empty() {
+        let mut update_requests = Vec::new();
+        for note in notes_to_update {
+            if let Some(cached_entry) = cache.get(&note.metadata.label) {
+                let request = anki_client.action_to_request(AnkiAction::UpdateNote {
+                    note: crate::ankiconnect::NoteUpdate {
+                        id: cached_entry.id.clone(),
+                        fields: Some(note.anki_note.fields.clone()),
+                        tags: note.anki_note.tags.clone(),
+                        model_name: Some(note.anki_note.model_name.as_str().to_string()),
+                        audio: note.anki_note.audio.clone(),
+                        video: note.anki_note.video.clone(),
+                        picture: note.anki_note.picture.clone(),
+                    },
+                });
+                update_requests.push(RequestOrRequestList::Single(request));
+            }
+        }
+
+        if !update_requests.is_empty() {
+            if update_requests.len() == 1 {
+                requests.extend(update_requests);
+            } else {
+                requests.push(RequestOrRequestList::List(RequestList {
+                    multi: true,
+                    requests: update_requests,
+                }));
+            }
+        }
+    }
+
+    Ok(RequestList {
+        multi: requests.len() > 1,
+        requests,
+    })
+}
+
+/// Execute the request list against AnkiConnect.
+async fn execute_requests(
+    request_list: &RequestList,
+    anki_client: &AnkiConnect,
+    http_client: &Client,
+    cache: &mut Cache,
+    result: &mut SyncResult,
+    processed_notes: &[ProcessedNote],
+) -> Result<()> {
+    // print request list for debugging
+    if cfg!(debug_assertions) {
+        println!("Request List: {:?}", request_list);
+    }
+
+    // Execute requests sequentially to ensure proper ordering
+    // (deck creation before note addition, etc.)
+
+    for request_or_list in &request_list.requests {
+        match request_or_list {
+            RequestOrRequestList::Single(request) => {
+                let note_ids =
+                    execute_single_request(request, anki_client, http_client, cache, result)
+                        .await?;
+
+                // Update cache for successfully added notes
+                if let Some(note_ids) = note_ids {
+                    update_cache_with_added_notes(cache, &note_ids, processed_notes).await?;
+                }
+            }
+            RequestOrRequestList::List(nested_list) => {
+                Box::pin(execute_requests(
+                    nested_list,
+                    anki_client,
+                    http_client,
+                    cache,
+                    result,
+                    processed_notes,
+                ))
+                .await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Execute a single request against AnkiConnect.
+async fn execute_single_request(
+    request: &serde_json::Value,
+    anki_client: &AnkiConnect,
+    http_client: &Client,
+    _cache: &mut Cache,
+    result: &mut SyncResult,
+) -> Result<Option<Vec<u64>>> {
+    let response = http_client
+        .post(anki_client.url())
+        .json(request)
+        .send()
+        .await
+        .map_err(|e| Error::anki_connect(format!("Failed to send request: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(Error::anki_connect(format!(
+            "AnkiConnect returned status: {}",
+            response.status()
+        )));
+    }
+
+    let response_text = response
+        .text()
+        .await
+        .map_err(|e| Error::anki_connect(format!("Failed to read response: {}", e)))?;
+
+    // Parse the response to check for errors
+    let response_json: serde_json::Value = serde_json::from_str(&response_text)
+        .map_err(|e| Error::anki_connect(format!("Failed to parse response: {}", e)))?;
+
+    if let Some(error) = response_json.get("error") {
+        if !error.is_null() {
+            return Err(Error::anki_connect(format!("AnkiConnect error: {}", error)));
+        }
+    }
+
+    // Determine the type of request and update result accordingly
+    let mut returned_note_ids = None;
+
+    if let Some(action) = request.get("action").and_then(|a| a.as_str()) {
+        match action {
+            "createDeck" => {
+                result.decks_created += 1;
+            }
+            "addNotes" => {
+                // The response should contain an array of note IDs
+                if let Some(note_ids) = response_json.get("result").and_then(|r| r.as_array()) {
+                    result.notes_added += note_ids.len();
+
+                    // Extract note IDs for cache updating
+                    let ids: Vec<u64> = note_ids.iter().filter_map(|v| v.as_u64()).collect();
+                    returned_note_ids = Some(ids);
+                }
+            }
+            "updateNote" => {
+                result.notes_updated += 1;
+            }
+            _ => {
+                // Other actions don't affect our counts
+            }
+        }
+    }
+
+    Ok(returned_note_ids)
+}
+
+/// Update cache with newly added notes.
+async fn update_cache_with_added_notes(
+    cache: &mut Cache,
+    note_ids: &[u64],
+    processed_notes: &[ProcessedNote],
+) -> Result<()> {
+    // Find notes that were actually added (not already in cache)
+    let new_notes: Vec<_> = processed_notes
+        .iter()
+        .filter(|note| !cache.contains(&note.metadata.label))
+        .collect();
+
+    // Match note IDs with the corresponding notes
+    for (i, &note_id) in note_ids.iter().enumerate() {
+        if let Some(processed_note) = new_notes.get(i) {
+            // Create cache entry for this note
+            let note_id = NoteId(note_id);
+            cache
+                .update_from_note(
+                    &processed_note.metadata,
+                    note_id,
+                    processed_note.field_hashes.clone(),
+                )
+                .await?;
+        }
+    }
+
+    Ok(())
 }

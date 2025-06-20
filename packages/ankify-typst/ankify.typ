@@ -47,7 +47,7 @@
 ///   model: "Basic",
 ///   data: (
 ///     Front: "What is the Pythagorean theorem?",
-///     Back: "a² + b² = c²"
+///     Back: [$a^2 + b^2 = c^2$]
 ///   ),
 ///   deck: "Mathematics",
 ///   tags: ("geometry", "theorem"),
@@ -55,6 +55,28 @@
 /// )
 /// ```
 
+#let filter-content(data) = {
+    let data-without-content = (:)
+    for (k, v) in data {
+      if (type(v) == content) {
+        data-without-content.insert(k, "")
+      } else if (type(v) == dictionary) {
+        // Recursively filter content in nested dictionaries
+        let filtered-dict = (:)
+        for (nested-k, nested-v) in v {
+          if (type(nested-v) == content) {
+            filtered-dict.insert(nested-k, "")
+          } else {
+            filtered-dict.insert(nested-k, nested-v)
+          }
+        }
+        data-without-content.insert(k, filtered-dict)
+      } else {
+        data-without-content.insert(k, v)
+      }
+    }
+    return data-without-content
+}
 
 // Create a note.
 //
@@ -129,8 +151,12 @@
       note-object = z.parse(note-object, note-schema)
     }
 
-    // Store as metadata for CLI extraction
-    [#metadata(note-object) <ankify-note>]
+    // Store as metadata for CLI extraction - filter content only in the data field
+    let filtered-note = note-object
+    if (note-object.data != none) {
+      filtered-note.data = filter-content(note-object.data)
+    }
+    [#metadata(filtered-note) <ankify-note>]
 
     // Return both the update (which places the state change) and the content
     [
@@ -141,6 +167,7 @@
     ]
   }
 }
+
 
 /// Configure Ankify settings for the current document.
 ///

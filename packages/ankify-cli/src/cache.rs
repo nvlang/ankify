@@ -40,9 +40,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-use crate::ankiconnect::{Deck, Field, Model, NoteId, Tag};
+use crate::ankiconnect::{Deck, Field, Model, Note as AnkiNote, NoteId, Tag};
+use crate::compile::Format;
 use crate::error::{Error, Result};
-use crate::metadata::Note;
+use crate::metadata::CompletedNote;
+use futures;
 
 /// A SHA-256 hash represented as a hexadecimal string.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -115,7 +117,7 @@ pub struct CacheEntry {
     /// This is a map from the field name to the hash of the field's content.
     /// For Png and Svg contents, this hash is the hash of the media file. For
     /// Plain contents, this hash is the hash of the text.
-    pub hash: HashMap<Field, Sha256>,
+    pub hash: HashMap<Field, Option<Sha256>>,
 
     /// The Anki deck to which this note belongs.
     pub deck: Deck,
@@ -127,36 +129,31 @@ pub struct CacheEntry {
 impl CacheEntry {
     /// Get the hash for a specific field, if it exists.
     pub fn get_field_hash(&self, field: &Field) -> Option<&Sha256> {
-        self.hash.get(field)
+        self.hash.get(field).and_then(|opt| opt.as_ref())
     }
 
     /// Set the hash for a specific field.
-    pub fn set_field_hash(&mut self, field: Field, hash: Sha256) {
+    pub fn set_field_hash(&mut self, field: Field, hash: Option<Sha256>) {
         self.hash.insert(field, hash);
     }
 
     /// Check if this entry has the same content hashes as the provided field hashes.
-    pub fn has_same_content(&self, field_hashes: &HashMap<Field, Sha256>) -> bool {
-        // Check if all fields in the cache match the provided hashes
-        for (field, cached_hash) in &self.hash {
-            if let Some(provided_hash) = field_hashes.get(field) {
-                if cached_hash != provided_hash {
-                    return false;
-                }
-            } else {
-                // Field exists in cache but not in provided hashes
-                return false;
-            }
-        }
-
-        // Check if there are any fields in provided hashes that aren't in cache
-        for field in field_hashes.keys() {
-            if !self.hash.contains_key(field) {
-                return false;
-            }
-        }
-
-        true
+    pub fn compare_hashes(
+        &self,
+        field_hashes: &HashMap<Field, Option<Sha256>>,
+    ) -> HashMap<Field, bool> {
+        field_hashes
+            .iter()
+            .map(|(field, hash)| {
+                let cached_hash = self.get_field_hash(field);
+                let is_equal = match (cached_hash, hash) {
+                    (Some(cached), Some(new)) => cached == new,
+                    (None, None) => true,
+                    _ => false,
+                };
+                (field.clone(), is_equal)
+            })
+            .collect()
     }
 }
 
@@ -164,6 +161,7 @@ impl CacheEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cache {
     /// Map from note label to cache entry.
+    #[serde(flatten)]
     entries: HashMap<String, CacheEntry>,
 
     /// Path to the cache file.
@@ -302,9 +300,9 @@ impl Cache {
     /// This is typically called after a successful sync operation.
     pub async fn update_from_note(
         &mut self,
-        note: &Note,
+        note: &CompletedNote,
         note_id: NoteId,
-        field_hashes: HashMap<Field, Sha256>,
+        field_hashes: HashMap<Field, Option<Sha256>>,
     ) -> Result<()> {
         let label = Label::new(note.label.clone());
         let deck = Deck::new(note.deck.clone());
@@ -324,15 +322,6 @@ impl Cache {
         Ok(())
     }
 
-    /// Check if a note has changed since it was last cached.
-    /// Returns true if the note is not in the cache or if any field content has changed.
-    pub fn has_note_changed(&self, label: &str, field_hashes: &HashMap<Field, Sha256>) -> bool {
-        match self.get(label) {
-            Some(entry) => !entry.has_same_content(field_hashes),
-            None => true, // Not in cache, so it's considered changed
-        }
-    }
-
     /// Get the Anki note ID for a cached note, if it exists.
     pub fn get_note_id(&self, label: &str) -> Option<NoteId> {
         self.get(label).map(|entry| entry.id.clone())
@@ -340,76 +329,88 @@ impl Cache {
 
     /// Create field hashes from note data values.
     /// This is a utility function to help with creating hash maps for comparison.
-    pub async fn create_field_hashes_from_note_data(
+    pub async fn create_field_hashes(
         &self,
-        note_data: &HashMap<String, crate::metadata::NoteDataValue>,
-        media_dir: Option<&Path>,
-    ) -> Result<HashMap<Field, Sha256>> {
+        anki_note: &AnkiNote,
+        note_metadata: &CompletedNote,
+    ) -> Result<HashMap<Field, Option<Sha256>>> {
+        // Separate plain text and file-based futures
+        let mut plain_futures = Vec::new();
+        let mut file_futures = Vec::new();
+
+        for (field, value) in &note_metadata.data {
+            let field_key = Field::new(field.clone());
+            let value_clone = value.clone();
+
+            match Format::from(value.format.as_str()) {
+                Format::Plain => {
+                    // Create future for plain text hashing
+                    let future = async move {
+                        let hash = value_clone
+                            .value
+                            .and_then(|v| Some(Sha256::from_text(v.as_str())));
+                        (field_key, hash)
+                    };
+                    plain_futures.push(future);
+                }
+                _ => {
+                    // Create future for file-based hashing
+                    let file_path = PathBuf::from(
+                        // `anki_note.picture.find((note) => note.fields.contains(field))`
+                        anki_note
+                            .picture
+                            .as_ref()
+                            .unwrap_or(&Vec::new())
+                            .iter()
+                            .find(|media| {
+                                media.fields.as_ref().map_or(false, |fields| {
+                                    fields.iter().any(|f| f.as_str() == field)
+                                })
+                            })
+                            .map_or_else(
+                                || value.value.clone().unwrap_or_default(),
+                                |media| media.path.as_ref().unwrap_or(&String::new()).clone(),
+                            ),
+                    );
+
+                    let future = async move {
+                        let content = fs::read(&file_path).await.map_err(|e| {
+                            Error::cache(format!(
+                                "Failed to read media file '{}': {}",
+                                file_path.display(),
+                                e
+                            ))
+                        })?;
+                        let hash = Sha256::from_bytes(&content);
+                        Ok::<(Field, Option<Sha256>), Error>((field_key, Some(hash)))
+                    };
+                    file_futures.push(future);
+                }
+            }
+        }
+
+        // Process both types of futures in parallel
+        let (plain_results, file_results) = futures::future::join(
+            futures::future::join_all(plain_futures),
+            futures::future::join_all(file_futures),
+        )
+        .await;
+
+        // Collect results into HashMap
         let mut field_hashes = HashMap::new();
 
-        for (field_name, data_value) in note_data {
-            let field = Field::new(field_name.clone());
-            let hash = self.hash_note_data_value(data_value, media_dir).await?;
+        // Add plain text results
+        for (field, hash) in plain_results {
+            field_hashes.insert(field, hash);
+        }
+
+        // Add file-based results
+        for result in file_results {
+            let (field, hash) = result?;
             field_hashes.insert(field, hash);
         }
 
         Ok(field_hashes)
-    }
-
-    /// Hash a note data value based on its format.
-    pub async fn hash_note_data_value(
-        &self,
-        data_value: &crate::metadata::NoteDataValue,
-        media_dir: Option<&Path>,
-    ) -> Result<Sha256> {
-        use crate::metadata::{NoteDataValue, NoteDataValueWithFormat};
-
-        match data_value {
-            NoteDataValue::Simple(text) => {
-                // For simple text, hash the content directly
-                Ok(Sha256::from_text(text))
-            }
-            NoteDataValue::WithFormat(NoteDataValueWithFormat { value, format }) => {
-                match format.as_deref() {
-                    Some("png") | Some("svg") => {
-                        // For media formats, try to hash the file if media_dir is provided
-                        if let Some(media_dir) = media_dir {
-                            let file_path = media_dir.join(value);
-                            if file_path.exists() {
-                                let content = fs::read(&file_path).await.map_err(|e| {
-                                    Error::cache(format!(
-                                        "Failed to read media file '{}': {}",
-                                        file_path.display(),
-                                        e
-                                    ))
-                                })?;
-                                Ok(Sha256::from_bytes(&content))
-                            } else {
-                                // File doesn't exist, hash the value as text
-                                Ok(Sha256::from_text(value))
-                            }
-                        } else {
-                            // No media directory provided, hash the value as text
-                            Ok(Sha256::from_text(value))
-                        }
-                    }
-                    _ => {
-                        // For plain text or unknown formats, hash the content directly
-                        Ok(Sha256::from_text(value))
-                    }
-                }
-            }
-            NoteDataValue::Complex(json_value) => {
-                // For complex values, serialize to JSON and hash that
-                let json_str = serde_json::to_string(json_value).map_err(|e| {
-                    Error::cache(format!(
-                        "Failed to serialize complex note data value: {}",
-                        e
-                    ))
-                })?;
-                Ok(Sha256::from_text(&json_str))
-            }
-        }
     }
 }
 

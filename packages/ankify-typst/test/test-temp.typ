@@ -1,7 +1,7 @@
-#import "source.typ"
-#import "ankify.typ": __ankify-configuration, __ankify-notes
-#hide([#source])
+#import "../source.typ" as src
+#import "../ankify.typ": __ankify-configuration, __ankify-notes
 #set page(height: auto)
+#hide([#src])
 
 #context {
   (__ankify-configuration.final().setup)()

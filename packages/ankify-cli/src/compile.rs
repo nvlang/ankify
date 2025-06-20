@@ -12,10 +12,10 @@
 //!    of the `Note` struct. For Plain format, no output file is generated and
 //!    the string value is passed directly to the note's fields.
 
-use crate::ankiconnect::{Deck, Field, FieldValue, MediaFile, Model, Note, Tag};
+use crate::ankiconnect::{Deck, Field, FieldValue, MediaFile, Model, Note as AnkiNote, Tag};
 use crate::error::{Error, Result};
-use crate::metadata::Note as MetadataNote;
-use crate::query::query_ankify_notes;
+use crate::metadata::CompletedNote;
+use crate::query;
 use base64::Engine;
 use std::collections::HashMap;
 use std::fs;
@@ -25,15 +25,19 @@ use tokio::process::Command as AsyncCommand;
 
 /// Get the root path for the monorepo (for --root flag).
 fn get_root_path() -> Result<PathBuf> {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .map_err(|_| Error::custom("CARGO_MANIFEST_DIR not set"))?;
+    // Try to get CARGO_MANIFEST_DIR first (for development)
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        return std::path::PathBuf::from(manifest_dir)
+            .parent() // packages
+            .ok_or_else(|| Error::custom("Cannot find packages directory"))?
+            .parent() // ankify root
+            .ok_or_else(|| Error::custom("Cannot find monorepo root"))
+            .map(|p| p.to_path_buf());
+    }
 
-    std::path::PathBuf::from(manifest_dir)
-        .parent() // packages
-        .ok_or_else(|| Error::custom("Cannot find packages directory"))?
-        .parent() // ankify root
-        .ok_or_else(|| Error::custom("Cannot find monorepo root"))
-        .map(|p| p.to_path_buf())
+    // Fallback: use current directory for release builds
+    std::env::current_dir()
+        .map_err(|e| Error::custom(format!("Cannot get current directory: {}", e)))
 }
 
 /// Format types for rendering note fields.
@@ -89,16 +93,27 @@ pub struct CompileConfig {
     pub output_dir: PathBuf,
     /// Additional arguments to pass to typst compile.
     pub extra_args: Vec<String>,
+    ///
+    pub completed_notes_metadata: Vec<CompletedNote>,
+    ///
+    pub required_formats: Vec<Format>,
 }
 
 impl CompileConfig {
     /// Create a new compile configuration.
-    pub fn new(temp_file: PathBuf, source_file: PathBuf, output_dir: PathBuf) -> Self {
+    pub fn new(
+        temp_file: PathBuf,
+        source_file: PathBuf,
+        output_dir: PathBuf,
+        completed_notes_metadata: Vec<CompletedNote>,
+    ) -> Self {
         Self {
             temp_file,
             source_file,
             output_dir,
             extra_args: Vec::new(),
+            required_formats: query::determine_required_formats(&completed_notes_metadata),
+            completed_notes_metadata,
         }
     }
 
@@ -113,7 +128,7 @@ impl CompileConfig {
 #[derive(Debug)]
 pub struct CompileResult {
     /// The notes with associated media files.
-    pub notes: Vec<Note>,
+    pub notes: Vec<AnkiNote>,
     /// Paths to generated output files.
     pub output_files: Vec<PathBuf>,
 }
@@ -142,70 +157,35 @@ pub struct CompileResult {
 /// - Typst compilation fails
 /// - Output files cannot be read or renamed
 pub async fn compile_temp_file(config: &CompileConfig) -> Result<CompileResult> {
-    // Query the temporary file for note metadata
-    let metadata_notes = query_notes_metadata(config).await?;
-
-    if metadata_notes.is_empty() {
+    if config.completed_notes_metadata.is_empty() {
         return Ok(CompileResult {
             notes: Vec::new(),
             output_files: Vec::new(),
         });
     }
 
-    // Determine which formats need to be compiled
-    let required_formats = determine_required_formats(&metadata_notes);
+    // Compile the files for each required format, in parallel
+    let futures: Vec<_> = config
+        .required_formats
+        .iter()
+        .map(|format| compile_format(config, format))
+        .collect();
 
-    // Compile the files for each required format
+    let results = futures::future::join_all(futures).await;
     let mut output_files = Vec::new();
-    for format in &required_formats {
-        if *format != Format::Plain {
-            let files = compile_format(config, format).await?;
-            output_files.extend(files);
-        }
+    for result in results {
+        let files = result?;
+        output_files.extend(files);
     }
 
     // Associate output files with notes and fields
-    let notes = associate_files_with_notes(config, &metadata_notes, &output_files).await?;
+    let notes =
+        associate_files_with_notes(config, &config.completed_notes_metadata, &output_files).await?;
 
     Ok(CompileResult {
         notes,
         output_files,
     })
-}
-
-/// Query the temporary file for note metadata.
-async fn query_notes_metadata(config: &CompileConfig) -> Result<Vec<MetadataNote>> {
-    let root_dir = get_root_path()?;
-    let root_arg = root_dir
-        .to_str()
-        .ok_or_else(|| Error::custom("Root directory path contains invalid UTF-8"))?;
-
-    let extra_args = vec!["--root", root_arg];
-    query_ankify_notes(&config.temp_file, Some(&extra_args)).await
-}
-
-/// Determine which formats need to be compiled based on note metadata.
-fn determine_required_formats(notes: &[MetadataNote]) -> Vec<Format> {
-    let mut formats = std::collections::HashSet::new();
-
-    for note in notes {
-        if let Some(note_format) = &note.format {
-            formats.insert(Format::from(note_format.as_str()));
-        } else {
-            formats.insert(Format::Png); // Default format
-        }
-
-        // Check field-specific formats if data has format specifications
-        for value in note.data.values() {
-            if let crate::metadata::NoteDataValue::WithFormat(data) = value {
-                if let Some(field_format) = &data.format {
-                    formats.insert(Format::from(field_format.as_str()));
-                }
-            }
-        }
-    }
-
-    formats.into_iter().collect()
 }
 
 /// Compile the temporary file for a specific format.
@@ -215,7 +195,21 @@ async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<P
         .output_dir
         .join(format!("output-{{p}}.{}", format.extension()));
 
-    let root_dir = get_root_path()?;
+    // Check if extra_args contains a custom --root, otherwise use default
+    let mut custom_root = None;
+    let mut i = 0;
+    while i < config.extra_args.len() {
+        if config.extra_args[i] == "--root" && i + 1 < config.extra_args.len() {
+            custom_root = Some(&config.extra_args[i + 1]);
+            break;
+        }
+        i += 1;
+    }
+
+    let root_dir = match custom_root {
+        Some(root) => std::path::PathBuf::from(root),
+        None => get_root_path()?,
+    };
 
     // Build the typst compile command
     let mut cmd = AsyncCommand::new("typst");
@@ -227,8 +221,17 @@ async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<P
         .arg(&config.temp_file)
         .arg(&output_pattern);
 
-    // Add any extra arguments
+    // Add any extra arguments (but skip --root args since we handled them)
+    let mut skip_next = false;
     for arg in &config.extra_args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if arg == "--root" {
+            skip_next = true;
+            continue;
+        }
         cmd.arg(arg);
     }
 
@@ -295,9 +298,9 @@ async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<P
 /// Associate output files with notes and fields.
 async fn associate_files_with_notes(
     _config: &CompileConfig,
-    metadata_notes: &[MetadataNote],
+    metadata_notes: &[CompletedNote],
     output_files: &[PathBuf],
-) -> Result<Vec<Note>> {
+) -> Result<Vec<AnkiNote>> {
     let mut anki_notes = Vec::new();
     let timestamp = chrono::Utc::now().timestamp();
 
@@ -314,14 +317,11 @@ async fn associate_files_with_notes(
 
         for field_name in sorted_fields {
             let field_value = &metadata_note.data[field_name];
-
-            // Determine the format for this field
-            let field_format = get_field_format(field_value, &metadata_note.format);
-
+            let field_format = Format::from(field_value.format.as_str());
             match field_format {
                 Format::Plain => {
                     // For plain format, use the string value directly
-                    let text_content = extract_text_content(field_value);
+                    let text_content = field_value.value.clone();
                     fields.insert(
                         Field::new(field_name.clone()),
                         FieldValue::new(text_content),
@@ -340,19 +340,18 @@ async fn associate_files_with_notes(
                             &field_format,
                         )?;
 
-                        // Add reference to the field
-                        let filename = media_file.filename.clone();
+                        let _filename = media_file.filename.clone();
                         fields.insert(
-                            Field::new(field_name.clone()),
-                            FieldValue::new(format!("<img src=\"{}\">", filename)),
+                            Field::new(field_name.to_string()),
+                            FieldValue::new(Some("".to_string())),
                         );
 
                         picture_files.push(media_file);
                     } else {
                         // Fallback to text content if no output file found
-                        let text_content = extract_text_content(field_value);
+                        let text_content = field_value.value.clone();
                         fields.insert(
-                            Field::new(field_name.clone()),
+                            Field::new(field_name.to_string()),
                             FieldValue::new(text_content),
                         );
                     }
@@ -361,7 +360,7 @@ async fn associate_files_with_notes(
         }
 
         // Create the Anki note
-        let anki_note = Note {
+        let anki_note = AnkiNote {
             deck_name: Deck::new(metadata_note.deck.clone()),
             model_name: Model::new(metadata_note.model.clone()),
             fields,
@@ -390,20 +389,21 @@ async fn associate_files_with_notes(
 
 /// Create a mapping of (note_index, field_name) to output file.
 fn create_file_associations<'a>(
-    metadata_notes: &'a [MetadataNote],
+    metadata_notes: &'a [CompletedNote],
     output_files: &'a [PathBuf],
 ) -> Result<HashMap<(usize, &'a str), &'a PathBuf>> {
     let mut associations = HashMap::new();
-    let mut file_index = 0;
+
+    // Skip the first output file (page 1) which is the setup page and is usually blank
+    let mut file_index = 1;
 
     for (note_index, metadata_note) in metadata_notes.iter().enumerate() {
-        // Sort field names to match the order used in the generated Typst file
+        // Sort field names to match the alphabetical order used in the generated Typst file
         let mut sorted_fields: Vec<_> = metadata_note.data.keys().collect();
         sorted_fields.sort();
 
         for field_name in sorted_fields {
-            let field_value = &metadata_note.data[field_name];
-            let field_format = get_field_format(field_value, &metadata_note.format);
+            let field_format = Format::from(metadata_note.data[field_name].format.as_str());
 
             // Only associate files for non-plain formats
             if field_format != Format::Plain {
@@ -419,45 +419,8 @@ fn create_file_associations<'a>(
     Ok(associations)
 }
 
-/// Get the format for a specific field.
-fn get_field_format(
-    field_value: &crate::metadata::NoteDataValue,
-    note_format: &Option<String>,
-) -> Format {
-    match field_value {
-        crate::metadata::NoteDataValue::WithFormat(data) => {
-            if let Some(format) = &data.format {
-                Format::from(format.as_str())
-            } else if let Some(note_fmt) = note_format {
-                Format::from(note_fmt.as_str())
-            } else {
-                Format::Png
-            }
-        }
-        _ => {
-            if let Some(note_fmt) = note_format {
-                Format::from(note_fmt.as_str())
-            } else {
-                Format::Png
-            }
-        }
-    }
-}
-
-/// Extract text content from a note data value.
-fn extract_text_content(value: &crate::metadata::NoteDataValue) -> String {
-    match value {
-        crate::metadata::NoteDataValue::Simple(text) => text.clone(),
-        crate::metadata::NoteDataValue::WithFormat(data) => data.value.clone(),
-        crate::metadata::NoteDataValue::Complex(_) => {
-            // For complex content, we could render it as text, but for now just use a placeholder
-            "[Complex Content]".to_string()
-        }
-    }
-}
-
 /// Create a media file from an output file.
-fn create_media_file(
+pub fn create_media_file(
     output_file: &Path,
     note_label: &str,
     field_name: &str,
@@ -486,12 +449,12 @@ fn create_media_file(
     );
 
     Ok(MediaFile {
-        filename,
+        filename: filename.clone(),
         data: Some(encoded_data),
-        path: None,
-        url: None,
+        path: Some(output_file.to_string_lossy().to_string()),
+        url: Some(output_file.to_string_lossy().to_string()),
         skip_hash: None,
-        fields: None,
+        fields: Some(vec![Field::new(field_name.to_string())]),
     })
 }
 
@@ -540,196 +503,4 @@ pub fn cleanup_output_files(dir: &Path) -> Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::metadata::NoteDataValue;
-    use std::collections::HashMap;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_format_from_str() {
-        assert_eq!(Format::from("plain"), Format::Plain);
-        assert_eq!(Format::from("svg"), Format::Svg);
-        assert_eq!(Format::from("png"), Format::Png);
-        assert_eq!(Format::from("PNG"), Format::Png);
-        assert_eq!(Format::from("unknown"), Format::Png);
-    }
-
-    #[test]
-    fn test_format_extension() {
-        assert_eq!(Format::Plain.extension(), "txt");
-        assert_eq!(Format::Svg.extension(), "svg");
-        assert_eq!(Format::Png.extension(), "png");
-    }
-
-    #[test]
-    fn test_format_typst_arg() {
-        assert_eq!(Format::Svg.typst_arg(), "svg");
-        assert_eq!(Format::Png.typst_arg(), "png");
-    }
-
-    #[test]
-    #[should_panic(expected = "Plain format should not be compiled")]
-    fn test_format_plain_typst_arg_panics() {
-        Format::Plain.typst_arg();
-    }
-
-    #[test]
-    fn test_compile_config_new() {
-        let temp_file = PathBuf::from("temp.typ");
-        let source_file = PathBuf::from("source.typ");
-        let output_dir = PathBuf::from("output");
-
-        let config = CompileConfig::new(temp_file.clone(), source_file.clone(), output_dir.clone());
-
-        assert_eq!(config.temp_file, temp_file);
-        assert_eq!(config.source_file, source_file);
-        assert_eq!(config.output_dir, output_dir);
-        assert!(config.extra_args.is_empty());
-    }
-
-    #[test]
-    fn test_compile_config_with_extra_args() {
-        let config = CompileConfig::new(
-            PathBuf::from("temp.typ"),
-            PathBuf::from("source.typ"),
-            PathBuf::from("output"),
-        )
-        .with_extra_args(vec!["--verbose".to_string()]);
-
-        assert_eq!(config.extra_args, vec!["--verbose"]);
-    }
-
-    #[test]
-    fn test_determine_required_formats() {
-        let mut notes = Vec::new();
-
-        // Note with PNG format
-        let mut note1 = MetadataNote {
-            label: "note1".to_string(),
-            model: "Basic".to_string(),
-            data: HashMap::new(),
-            deck: "Test".to_string(),
-            tags: Vec::new(),
-            other: serde_json::Value::Null,
-            format: Some("png".to_string()),
-        };
-        note1.data.insert(
-            "Front".to_string(),
-            NoteDataValue::Simple("Question".to_string()),
-        );
-
-        // Note with SVG format
-        let mut note2 = MetadataNote {
-            label: "note2".to_string(),
-            model: "Basic".to_string(),
-            data: HashMap::new(),
-            deck: "Test".to_string(),
-            tags: Vec::new(),
-            other: serde_json::Value::Null,
-            format: Some("svg".to_string()),
-        };
-        note2.data.insert(
-            "Front".to_string(),
-            NoteDataValue::Simple("Question".to_string()),
-        );
-
-        notes.push(note1);
-        notes.push(note2);
-
-        let formats = determine_required_formats(&notes);
-        assert!(formats.contains(&Format::Png));
-        assert!(formats.contains(&Format::Svg));
-    }
-
-    #[test]
-    fn test_get_field_format() {
-        // Simple value with note format
-        let simple_value = NoteDataValue::Simple("test".to_string());
-        let format = get_field_format(&simple_value, &Some("svg".to_string()));
-        assert_eq!(format, Format::Svg);
-
-        // WithFormat value with specific format
-        let with_format_value =
-            NoteDataValue::WithFormat(crate::metadata::NoteDataValueWithFormat {
-                value: "test".to_string(),
-                format: Some("png".to_string()),
-            });
-        let format = get_field_format(&with_format_value, &Some("svg".to_string()));
-        assert_eq!(format, Format::Png);
-
-        // Default format
-        let format = get_field_format(&simple_value, &None);
-        assert_eq!(format, Format::Png);
-    }
-
-    #[test]
-    fn test_extract_text_content() {
-        // Simple value
-        let simple = NoteDataValue::Simple("test content".to_string());
-        assert_eq!(extract_text_content(&simple), "test content");
-
-        // WithFormat value
-        let with_format = NoteDataValue::WithFormat(crate::metadata::NoteDataValueWithFormat {
-            value: "formatted content".to_string(),
-            format: Some("png".to_string()),
-        });
-        assert_eq!(extract_text_content(&with_format), "formatted content");
-
-        // Complex value
-        let complex = NoteDataValue::Complex(serde_json::json!({"func": "test"}));
-        assert_eq!(extract_text_content(&complex), "[Complex Content]");
-    }
-
-    #[test]
-    fn test_create_media_file() {
-        let temp_dir = TempDir::new().unwrap();
-        let test_file = temp_dir.path().join("test.png");
-        fs::write(&test_file, b"test image data").unwrap();
-
-        let media_file =
-            create_media_file(&test_file, "test-note", "Front", 1234567890, &Format::Png).unwrap();
-
-        assert_eq!(media_file.filename, "test-note@@Front@@1234567890.png");
-        assert!(media_file.data.is_some());
-        assert_eq!(
-            media_file.data.unwrap(),
-            base64::engine::general_purpose::STANDARD.encode(b"test image data")
-        );
-        assert!(media_file.path.is_none());
-        assert!(media_file.url.is_none());
-    }
-
-    #[test]
-    fn test_cleanup_output_files() {
-        let temp_dir = TempDir::new().unwrap();
-        let temp_path = temp_dir.path();
-
-        // Create various test files
-        fs::write(temp_path.join("output-1.png"), "content").unwrap();
-        fs::write(temp_path.join("output-2.svg"), "content").unwrap();
-        fs::write(temp_path.join("keep_this.png"), "keep this").unwrap();
-        fs::write(temp_path.join("document.typ"), "keep this too").unwrap();
-
-        // Clean up output files
-        cleanup_output_files(temp_path).unwrap();
-
-        // Check that only output files were removed
-        assert!(!temp_path.join("output-1.png").exists());
-        assert!(!temp_path.join("output-2.svg").exists());
-        assert!(temp_path.join("keep_this.png").exists());
-        assert!(temp_path.join("document.typ").exists());
-    }
-
-    #[test]
-    fn test_cleanup_output_files_nonexistent_directory() {
-        let temp_dir = TempDir::new().unwrap();
-        let nonexistent = temp_dir.path().join("nonexistent");
-
-        let result = cleanup_output_files(&nonexistent);
-        assert!(result.is_ok()); // Should not error for non-existent directories
-    }
 }

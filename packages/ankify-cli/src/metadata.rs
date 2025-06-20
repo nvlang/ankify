@@ -101,7 +101,7 @@ pub struct AnkiConnectChecks {
     pub tags: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     /// The label of the note, as parsed from the Typst file's metadata.
     pub label: String,
@@ -128,28 +128,63 @@ pub struct Note {
     pub format: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletedNote {
+    /// The label of the note, as parsed from the Typst file's metadata.
+    pub label: String,
+
+    /// The model to use for this note.
+    pub model: String,
+
+    /// The data dictionary for this note.
+    pub data: HashMap<String, CompletedNoteDataValueWithFormat>,
+
+    /// The deck to which this note belongs.
+    pub deck: String,
+
+    /// Tags associated with this note.
+    pub tags: Vec<String>,
+
+    /// Additional fields that may be present in the metadata.
+    ///
+    /// Values may be anything, but I'm not sure how to best represent that in
+    /// Rust's type system.
+    pub other: serde_json::Value,
+
+    /// The format in which the note's fields should be rendered by default.
+    pub format: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NoteDataValue {
     /// The value of the data field, as a simple string.
-    Simple(String),
+    Simple(Option<String>),
 
     /// The value of the data field, with an optional format.
     WithFormat(NoteDataValueWithFormat),
-
-    /// Complex Typst content (function calls, etc.)
-    Complex(serde_json::Value),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NoteDataValueWithFormat {
     /// The value of the data field.
-    pub value: String,
+    pub value: Option<String>,
 
     /// The format in which the value should be rendered.
     ///
     /// This is typically one of `"svg"`, `"png"`, or `"plain"`.
     pub format: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompletedNoteDataValueWithFormat {
+    /// The value of the data field.
+    pub value: Option<String>,
+
+    /// The format in which the value should be rendered.
+    ///
+    /// This is typically one of `"svg"`, `"png"`, or `"plain"`.
+    pub format: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -158,11 +193,6 @@ pub struct NoteDefaults {
     ///
     /// Default: `"Basic"`
     pub model: Option<String>,
-
-    /// The default data dictionary for notes.
-    ///
-    /// Default: `none`
-    pub data: Option<serde_json::Value>,
 
     /// The default deck to which to add notes.
     ///
@@ -191,9 +221,71 @@ pub struct NoteDefaults {
     ///
     /// Default: identity function that returns field content
     pub render: Option<serde_json::Value>,
+}
 
-    /// Default label (typically None for defaults).
+/// Configuration, as specified by the metadata embedded in the Typst file and
+/// queried by the `query` module.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompletedTypstAnkifyConfiguration {
+    /// AnkiConnect URL.
+    ///
+    /// Default: `"http://localhost:8765"`
+    #[serde(rename = "ankiconnect-url")]
+    pub ankiconnect_url: String,
+
+    /// Whether to print verbose logs.
+    ///
+    /// Default: `false`
+    pub verbose: bool,
+
+    /// Setup function (stored as opaque value since it's a function).
+    ///
+    /// Default: page setup function
+    pub setup: serde_json::Value,
+
+    /// Cache options.
+    pub cache: CacheOptions,
+
+    /// Options controlling which checks to perform. By default, all checks are
+    /// enabled.
+    pub checks: Checks,
+
+    /// Default values for notes.
+    pub defaults: NoteDefaults,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompletedNoteDefaults {
+    /// The default model to use for notes.
+    ///
+    /// Default: `"Basic"`
+    pub model: String,
+
+    /// The default deck to which to add notes.
+    ///
+    /// Default: `"Default"`
+    pub deck: String,
+
+    /// Default tags to apply to notes.
+    ///
+    /// Default: `[]`
+    pub tags: Vec<String>,
+
+    /// Additional data that may be present in the note metadata by default.
+    ///
+    /// Values may be anything, but I'm not sure how to best represent that in
+    /// Rust's type system.
     ///
     /// Default: `none`
-    pub label: Option<String>,
+    pub other: Option<serde_json::Value>,
+
+    /// The format in which the note's fields should be rendered by default.
+    ///
+    /// Default: `"png"`
+    pub format: String,
+
+    /// Default render function (stored as opaque value since it's a function).
+    ///
+    /// Default: identity function that returns field content
+    pub render: Option<serde_json::Value>,
 }
