@@ -58,7 +58,6 @@ typst-pdf = { workspace = true }
 typst-render = { workspace = true }
 typst-svg = { workspace = true }
 typst-timing = { workspace = true }
-typst-cli = { workspace = true }
 
 # File watching
 futures = { workspace = true }

@@ -331,7 +331,7 @@ impl SyncContext {
             http_client,
             cache,
             temp_files: Vec::new(),
-            output_files: Vec::new(),
+            output_files: HashMap::new(),
         })
     }
 
@@ -345,10 +345,12 @@ impl SyncContext {
             }
         }
 
-        for file in &self.output_files {
-            if file.exists() {
-                if let Err(e) = fs::remove_file(file).await {
-                    warn!("Failed to remove output file {}: {}", file.display(), e);
+        for (_, files) in &self.output_files {
+            for file in files {
+                if file.exists() {
+                    if let Err(e) = fs::remove_file(file).await {
+                        warn!("Failed to remove output file {}: {}", file.display(), e);
+                    }
                 }
             }
         }

@@ -103,20 +103,38 @@
 // ---
 //
 // - note-label (str): _(Required)_ Note label, used as a unique identifier.
+//
 // - data (dictionary): Dictionary of field names to content, strings, or
-//   dictionaries. Default: `none`
-// - model (str): Anki note type. Default: `"Basic"`
-// - deck (str): Anki deck name. Default: `"Default"`
-// - tags (array): Array of tags (strings) to apply. Default: `()` (empty array)
-// - other (dictionary): Additional metadata to pass to AnkiConnect. Default:
-//   `none`
-// - format (str): Rendering format (`"png"`, `"svg"`, `"plain"`). Default:
-//   `"png"`
+//   dictionaries.
+//
+//   _Default:_ `none`
+//
+// - model (str): Anki note type.
+//
+//   _Default:_ `"Basic"`
+//
+// - deck (str): Anki deck name.
+//
+//   _Default:_ `"Default"`
+//
+// - tags (array): Array of tags (strings) to apply.
+//
+//   _Default:_ `()` (empty array)
+//
+// - other (dictionary): Additional metadata to pass to AnkiConnect.
+//
+//   _Default:_ `none`
+//
+// - format (str): Rendering format (`"png"`, `"svg"`, `"plain"`).
+//
+//   _Default:_ `"png"`
+//
 // - render (function): Function to render the note content. Its signature is
 //   `(note: dictionary, field: str, field-content: content | str) => content`,
 //   where the named parameter `field-content` receives the content of the field
-//   in question and is made available for the user's convenience. Default:
-//   `(field-content: []) => { field-content }`
+//   in question and is made available for the user's convenience.
+//
+//   _Default:_ `(field-content: []) => { field-content }`
 //
 // -> content
 #let note(
@@ -232,7 +250,7 @@
 
 // Configure Ankify.
 //
-// Note that only the `defaults` parameter is properly stateful, i.e., can be
+// *⚠ Warning:* Note that only the `defaults` parameter is properly stateful, i.e., can be
 // changed throughout the document and will have these changes respected. For
 // all other parameters, only the last value set in the document will be
 // respected.
@@ -242,38 +260,120 @@
 // ```typst
 // #configure(
 //   ankiconnect-url: "http://localhost:8765",
-//   setup: () => {
-//     set page(
-//       // ...
-//     )
+//   setup: body => {
+//     set page(fill: rgb("#111"))
+//     body
 //   }
 // )
 // ```
 //
 // ---
 //
-// - ankiconnect-url (str): URL for AnkiConnect API. Default:
-//   `"http://localhost:8765"`
-// - verbose (bool): Enable verbose output. Default: `false`
-// - defaults (dictionary): Default values for card fields.
-// - setup (function): Setup function to run at the start of the document.
+// - ankiconnect-url (str): URL for AnkiConnect API.
+//
+//   _Default:_ `"http://localhost:8765"`
+//
+// - verbose (bool): Enable verbose output.
+//
+//   _Default:_ `false`
+//
+// - defaults (dictionary): Default values for notes.
+//
+//   - `model` (`str`): Default note type.
+//
+//     _Default:_ `"Basic"`
+//
+//   - `deck` (`str`): Default deck name.
+//
+//     _Default:_ `"Default"`
+//
+//   - `format` (`str`): Default rendering format (`"png"`, `"svg"`, `"plain"`).
+//
+//     _Default:_ `"png"`
+//
+//   - `tags` (`array`): Default tags (strings) to apply.
+//
+//     _Default:_ `()` (empty array)
+//
+//   - `other` (`dictionary`): Additional metadata to pass to AnkiConnect.
+//
+//     _Default:_ `none`
+//
+//   - `render` (function): Function to render the note content. Its signature is
+//     `(note: dictionary, field: str, field-content: content | str) => content`,
+//     where the named parameter `field-content` receives the content of the field
+//     in question and is made available for the user's convenience.
+//
+//     _Default:_
+//     ```typ
+//     (note: none, field: none, field-content: none) => { field-content }
+//     ```
+//
+//     *⚠ Warning:* Be sure to include the full
+//     `(note: none, field: none, field-content: none)` parameter signature, as
+//     you might get an error otherwise about unknown parameters being passed to
+//     the function in the temporary Typst document created by Ankify to render
+//     the notes.
+//
+// - setup (function): Setup function to run at the start of the document. Has
+//   one parameter, `body`, which is the document body. The function should
+//   return `body` after performing some setup actions, such as setting the
+//   page layout.
+//
+//   _Default:_
+//   ```typ
+//   body => {
+//     set page(margin: 1cm, width: 16cm)
+//     body
+//   }
+//   ```
+//
 // - cache (dictionary): Cache settings.
-//   - enabled (bool): Whether to enable caching. Default: `true`
-//   - custom-file (str): Path to custom cache file. Default: `none` (uses
-//     default cache)
+//
+//   - `enabled` (`bool`): Whether to enable caching.
+//
+//     _Default:_ `true`
+//
+//   - `custom-file` (`str`): Path to custom cache file.
+//
+//     _Default:_ `none` (uses default cache)
+//
 // - checks (dictionary): Validation checks to perform.
-//   - typst (bool): Enable Typst data and format checks. Default: `true`
-//   - ankiconnect (dictionary): Enable AnkiConnect checks.
-//     - model (bool): Check if model exists. Default: `true`
-//     - deck (bool): Check if deck exists. Default: `true`
-//     - tags (bool): Check if tags exist. Default: `true`
+//
+//   - `typst` (`bool`): Enable Typst data and format checks.
+//
+//     _Default:_ `true`
+//
+//   - `ankiconnect` (`dictionary`): Enable AnkiConnect checks.
+//
+//     - `model` (`bool`): Check if model exists.
+//
+//       _Default:_ `true`
+//
+//     - `deck` (`bool`): Check if deck exists.
+//
+//       _Default:_ `true`
+//
+//     - `tags` (`bool`): Check if tags exist.
+//
+//       _Default:_ `true`
 //
 // -> none
 #let configure(
   ankiconnect-url: "http://localhost:8765",
   verbose: false,
-  defaults: (:),
-  setup: none,
+  defaults: (
+    model: "Basic",
+    deck: "Default",
+    format: "png",
+    tags: (),
+    other: none,
+    render: (note: none, field: none, field-content: none) => { field-content },
+  ),
+  setup: body => {
+    set page(margin: 1cm, width: 16cm)
+    body
+  },
   cache: (
     enabled: true,
     custom-file: none,

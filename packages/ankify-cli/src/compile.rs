@@ -175,17 +175,19 @@ pub async fn compile_temp_file(config: &CompileConfig) -> Result<CompileResult> 
     let futures: Vec<_> = config
         .required_formats
         .iter()
-        .map(|format| compile_format(config, format))
+        .map(|format| {
+            let format_clone = format.clone();
+            async move {
+                let files = compile_format(config, &format_clone).await;
+                (format_clone, files)
+            }
+        })
         .collect();
-
     let results = futures::future::join_all(futures).await;
     let mut output_files = HashMap::new();
-    for result in results {
-        let files = result?;
-        output_files
-            .entry(files.format.clone())
-            .or_insert_with(Vec::new)
-            .extend(files.files);
+    for (format, files_result) in results {
+        let files = files_result?;
+        output_files.insert(format, files);
     }
 
     // Associate output files with notes and fields
@@ -199,7 +201,7 @@ pub async fn compile_temp_file(config: &CompileConfig) -> Result<CompileResult> 
 }
 
 /// Compile the temporary file for a specific format.
-async fn compile_format(config: &CompileConfig, format: &Format) -> Result<FilesWithFormat> {
+async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<PathBuf>> {
     // Use {p} pattern to generate one file per page
     let output_pattern = config
         .output_dir
@@ -302,10 +304,7 @@ async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Files
         extract_page_num(a).cmp(&extract_page_num(b))
     });
 
-    Ok(FilesWithFormat {
-        files: output_files,
-        format: format.clone(),
-    })
+    Ok(output_files)
 }
 
 /// Associate output files with notes and fields.

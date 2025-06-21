@@ -11,11 +11,9 @@
     other: none,
     render: (note: none, field: none, field-content: none) => { field-content },
   ),
-  setup: () => {
-    set page(
-      margin: 1cm,
-      width: 16cm,
-    )
+  setup: body => {
+    set page(margin: 1cm, width: 16cm)
+    body
   },
   cache: (
     enabled: true,

@@ -49,7 +49,6 @@ typst-pdf = "0.13"
 typst-render = "0.13"
 typst-svg = "0.13"
 typst-timing = "0.13"
-typst-cli = "0.13"
 
 # File watching
 futures = "0.3"

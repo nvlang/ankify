@@ -1,9 +1,15 @@
 #import ".ankify/ankify-typst/lib.typ": note, configure
 
 #configure(
-    setup: () => {
-        set page(margin: 1cm, width: 16cm)
-    }
+    setup: body => {
+        set page(margin: 5mm, width: 8cm)
+        body
+    },
+    defaults: (
+        render: (note: none, field: none, field-content: none) => {
+            field-content
+        },
+    )
 )
 
 #note(
