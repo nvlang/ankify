@@ -78,6 +78,10 @@ assert_cmd = { workspace = true }
 predicates = { workspace = true }
 regex = "1.10"
 
+# Image comparison for PNG validation
+image = "0.24"
+imageproc = "0.23"
+
 [[bin]]
 name = "ankify"
 path = "src/main.rs"

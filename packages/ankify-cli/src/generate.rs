@@ -148,8 +148,13 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
 
 #context {{
   (__ankify-configuration.final().setup)()
-  for note in __ankify-notes.final() {{
+  let notes = __ankify-notes.final()
+  let notes-len = notes.len()
+  let current-note-index = 0
+  for note in notes {{
     let sorted-data = note.data.pairs().sorted()
+    let fields-len = sorted-data.len()
+    let current-field-index = 0
     for (field, value) in sorted-data {{
       let field-content = none
       if (type(value) == dictionary and "value" in value) {{
@@ -160,8 +165,12 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
         panic("Invalid type for note data field", field)
       }}
       (note.render)(note: note, field: field, field-content: field-content)
-      pagebreak(weak: false)
+      if current-note-index != notes-len - 1 or current-field-index != fields-len - 1 {{
+          pagebreak(weak: false)
+      }}
+      current-field-index += 1
     }}
+    current-note-index += 1
   }}
 }}
 "#
@@ -169,11 +178,14 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
 
     // If we're in a test environment, we want to replace the import statement for ankify
     // with a local path to the plugin.
-    #[cfg(test)]
-    let content = content.replace(
-        &format!("@preview/ankify:{}", PLUGIN_VERSION),
-        "ankify-typst/lib.typ",
-    );
+    let content = if std::env::var("ANKIFY_USE_LOCAL_IMPORTS").is_ok() {
+        content.replace(
+            &format!("@preview/ankify:{}", PLUGIN_VERSION),
+            "ankify-typst/lib.typ",
+        )
+    } else {
+        content
+    };
 
     Ok(content)
 }

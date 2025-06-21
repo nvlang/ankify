@@ -16,7 +16,6 @@ use crate::ankiconnect::{Deck, Field, FieldValue, MediaFile, Model, Note as Anki
 use crate::error::{Error, Result};
 use crate::metadata::CompletedNote;
 use crate::query;
-use base64::Engine;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -130,7 +129,15 @@ pub struct CompileResult {
     /// The notes with associated media files.
     pub notes: Vec<AnkiNote>,
     /// Paths to generated output files.
-    pub output_files: Vec<PathBuf>,
+    pub output_files: HashMap<Format, Vec<PathBuf>>,
+}
+
+#[derive(Debug)]
+pub struct FilesWithFormat {
+    /// The format of the files.
+    pub format: Format,
+    /// The list of output files generated for this format.
+    pub files: Vec<PathBuf>,
 }
 
 /// Compile a temporary Typst file and generate Anki notes.
@@ -160,7 +167,7 @@ pub async fn compile_temp_file(config: &CompileConfig) -> Result<CompileResult> 
     if config.completed_notes_metadata.is_empty() {
         return Ok(CompileResult {
             notes: Vec::new(),
-            output_files: Vec::new(),
+            output_files: HashMap::new(),
         });
     }
 
@@ -172,10 +179,13 @@ pub async fn compile_temp_file(config: &CompileConfig) -> Result<CompileResult> 
         .collect();
 
     let results = futures::future::join_all(futures).await;
-    let mut output_files = Vec::new();
+    let mut output_files = HashMap::new();
     for result in results {
         let files = result?;
-        output_files.extend(files);
+        output_files
+            .entry(files.format.clone())
+            .or_insert_with(Vec::new)
+            .extend(files.files);
     }
 
     // Associate output files with notes and fields
@@ -189,7 +199,7 @@ pub async fn compile_temp_file(config: &CompileConfig) -> Result<CompileResult> 
 }
 
 /// Compile the temporary file for a specific format.
-async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<PathBuf>> {
+async fn compile_format(config: &CompileConfig, format: &Format) -> Result<FilesWithFormat> {
     // Use {p} pattern to generate one file per page
     let output_pattern = config
         .output_dir
@@ -292,14 +302,17 @@ async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<P
         extract_page_num(a).cmp(&extract_page_num(b))
     });
 
-    Ok(output_files)
+    Ok(FilesWithFormat {
+        files: output_files,
+        format: format.clone(),
+    })
 }
 
 /// Associate output files with notes and fields.
 async fn associate_files_with_notes(
     _config: &CompileConfig,
     metadata_notes: &[CompletedNote],
-    output_files: &[PathBuf],
+    output_files: &HashMap<Format, Vec<PathBuf>>,
 ) -> Result<Vec<AnkiNote>> {
     let mut anki_notes = Vec::new();
     let timestamp = chrono::Utc::now().timestamp();
@@ -387,32 +400,36 @@ async fn associate_files_with_notes(
     Ok(anki_notes)
 }
 
-/// Create a mapping of (note_index, field_name) to output file.
+/// Create a mapping of (note_index, field_name) to record { [format]: output_file }.
 fn create_file_associations<'a>(
     metadata_notes: &'a [CompletedNote],
-    output_files: &'a [PathBuf],
-) -> Result<HashMap<(usize, &'a str), &'a PathBuf>> {
+    output_files: &'a HashMap<Format, Vec<PathBuf>>,
+) -> Result<HashMap<(usize, &'a str), HashMap<Format, PathBuf>>> {
     let mut associations = HashMap::new();
 
-    // Skip the first output file (page 1) which is the setup page and is usually blank
-    let mut file_index = 1;
+    // For each format, get a reference to the Vec<PathBuf>
+    let mut format_to_files: HashMap<Format, &Vec<PathBuf>> = HashMap::new();
+    for (format, files) in output_files.iter() {
+        format_to_files.insert(format.clone(), files);
+    }
 
+    // For each field, we need to know which index it is in the global field order
+    // The order is: for all notes, for all fields (sorted), in order
+    let mut global_field_index = 0;
     for (note_index, metadata_note) in metadata_notes.iter().enumerate() {
-        // Sort field names to match the alphabetical order used in the generated Typst file
         let mut sorted_fields: Vec<_> = metadata_note.data.keys().collect();
         sorted_fields.sort();
 
         for field_name in sorted_fields {
-            let field_format = Format::from(metadata_note.data[field_name].format.as_str());
-
-            // Only associate files for non-plain formats
-            if field_format != Format::Plain {
-                if file_index < output_files.len() {
-                    associations
-                        .insert((note_index, field_name.as_str()), &output_files[file_index]);
-                    file_index += 1;
+            // For this (note_index, field_name), build a HashMap<Format, PathBuf>
+            let mut field_files = HashMap::new();
+            for (format, files) in &format_to_files {
+                if global_field_index < files.len() {
+                    field_files.insert(format.clone(), files[global_field_index].clone());
                 }
             }
+            associations.insert((note_index, field_name.as_str()), field_files);
+            global_field_index += 1;
         }
     }
 
@@ -421,38 +438,23 @@ fn create_file_associations<'a>(
 
 /// Create a media file from an output file.
 pub fn create_media_file(
-    output_file: &Path,
+    output_file: &HashMap<Format, PathBuf>,
     note_label: &str,
     field_name: &str,
     timestamp: i64,
     format: &Format,
 ) -> Result<MediaFile> {
-    // Read the file content
-    let file_data = fs::read(output_file).map_err(|e| {
-        Error::custom(format!(
-            "Failed to read output file {}: {}",
-            output_file.display(),
-            e
-        ))
-    })?;
-
-    // Encode as base64
-    let encoded_data = base64::engine::general_purpose::STANDARD.encode(&file_data);
-
-    // Generate the filename using the specified format
-    let filename = format!(
-        "{}@@{}@@{}.{}",
-        note_label,
-        field_name,
-        timestamp,
-        format.extension()
-    );
-
     Ok(MediaFile {
-        filename: filename.clone(),
-        data: Some(encoded_data),
-        path: Some(output_file.to_string_lossy().to_string()),
-        url: Some(output_file.to_string_lossy().to_string()),
+        filename: format!(
+            "{}@@{}@@{}.{}",
+            note_label,
+            field_name,
+            timestamp,
+            format.extension()
+        ),
+        data: None,
+        path: Some(output_file[format].to_string_lossy().to_string()),
+        url: None,
         skip_hash: None,
         fields: Some(vec![Field::new(field_name.to_string())]),
     })

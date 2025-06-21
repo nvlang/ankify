@@ -142,7 +142,7 @@
 
 use crate::ankiconnect::{AnkiAction, AnkiConnect, Field, Note as AnkiNote, NoteId};
 use crate::cache::{Cache, Sha256};
-use crate::compile::{compile_temp_file, CompileConfig};
+use crate::compile::{compile_temp_file, CompileConfig, Format};
 use crate::error::{Error, Result};
 use crate::generate::generate_temp_file;
 use crate::metadata::CompletedNote;
@@ -151,6 +151,7 @@ use crate::query::{
 };
 
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tokio::fs;
@@ -256,7 +257,7 @@ impl Default for SyncResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestList {
     /// Indicates whether the requests should be sent to AnkiConnect
     /// inside of a `"multi"` request or not.
@@ -266,7 +267,7 @@ pub struct RequestList {
     pub requests: Vec<RequestOrRequestList>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequestOrRequestList {
     /// A single request to be sent to AnkiConnect.
     Single(serde_json::Value),
@@ -290,13 +291,13 @@ struct ProcessedNote {
 }
 
 /// Context for the sync operation.
-struct SyncContext {
+pub struct SyncContext {
     config: SyncConfig,
     anki_client: AnkiConnect,
     http_client: Client,
     cache: Cache,
     temp_files: Vec<PathBuf>,
-    output_files: Vec<PathBuf>,
+    output_files: HashMap<Format, Vec<PathBuf>>,
 }
 
 impl SyncContext {
@@ -306,8 +307,12 @@ impl SyncContext {
         let cache = if let Some(cache_file) = &config.cache_file {
             Cache::load_from_file(cache_file).await?
         } else {
-            // Default cache file location
-            let cache_file = config.source_file.with_extension("ankify-cache.json");
+            // Default cache file location: .ankify/cache.json in the source file's directory
+            let source_dir = config
+                .source_file
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let cache_file = source_dir.join(".ankify").join("cache.json");
             Cache::load_from_file(cache_file).await?
         };
 
@@ -331,7 +336,7 @@ impl SyncContext {
     }
 
     /// Clean up temporary files and output files.
-    async fn cleanup(&self) -> Result<()> {
+    pub async fn cleanup(&self) -> Result<()> {
         for file in &self.temp_files {
             if file.exists() {
                 if let Err(e) = fs::remove_file(file).await {
@@ -676,7 +681,14 @@ async fn execute_requests(
 ) -> Result<()> {
     // print request list for debugging
     if cfg!(debug_assertions) {
-        println!("Request List: {:?}", request_list);
+        match serde_json::to_string_pretty(&serde_json::json!(request_list)) {
+            Ok(pretty) => {
+                println!("Request List (pretty):\n{}", pretty);
+            }
+            Err(_) => {
+                println!("Request List: {:?}", request_list);
+            }
+        }
     }
 
     // Execute requests sequentially to ensure proper ordering

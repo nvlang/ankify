@@ -5,7 +5,10 @@
 
 #context {
   (__ankify-configuration.final().setup)()
-  for note in __ankify-notes.final() {
+  let notes = __ankify-notes.final()
+  let notes-len = notes.len()
+  let current-note-index = 0
+  for note in notes {
     let sorted-data = note.data.pairs().sorted()
     for (field, value) in sorted-data {
       let field-content = none
@@ -17,7 +20,10 @@
         panic("Invalid type for note data field", field)
       }
       (note.render)(note: note, field: field, field-content: field-content)
-      pagebreak(weak: false)
+      if current-note-index != notes-len - 1 {
+          pagebreak(weak: false)
+      }
+      current-note-index += 1
     }
   }
 }
