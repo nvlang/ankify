@@ -322,8 +322,13 @@
 //
 //   _Default:_
 //   ```typ
+//   none
+//   ```
+//
+//   _Example with default page layout:_
+//   ```typ
 //   body => {
-//     set page(margin: 1cm, width: 16cm)
+//     set page(width: 105mm, height: auto, margin: 5mm)
 //     body
 //   }
 //   ```
@@ -370,10 +375,7 @@
     other: none,
     render: (note: none, field: none, field-content: none) => { field-content },
   ),
-  setup: body => {
-    set page(margin: 1cm, width: 16cm)
-    body
-  },
+  setup: none,
   cache: (
     enabled: true,
     custom-file: none,
