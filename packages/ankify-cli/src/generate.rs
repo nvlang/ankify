@@ -173,7 +173,6 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
 }}
 
 #context {{
-  (__ankify-configuration.final().setup)()
   let notes = __ankify-notes.final()
   let notes-len = notes.len()
   let current-note-index = 0
