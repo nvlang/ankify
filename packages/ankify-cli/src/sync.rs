@@ -172,6 +172,9 @@ pub struct SyncConfig {
     pub extra_args: Vec<String>,
     /// Whether this is running in CLI context (affects progress reporting).
     pub cli_mode: bool,
+    /// Keep the generated temp file and rendered images instead of deleting
+    /// them after a successful sync. Useful for debugging and tests.
+    pub keep_artifacts: bool,
 }
 
 impl SyncConfig {
@@ -184,6 +187,7 @@ impl SyncConfig {
             ankiconnect_url: None,
             extra_args: Vec::new(),
             cli_mode: false,
+            keep_artifacts: false,
         }
     }
 
@@ -214,6 +218,13 @@ impl SyncConfig {
     /// Enable CLI mode for progress reporting.
     pub fn with_cli_mode(mut self, cli_mode: bool) -> Self {
         self.cli_mode = cli_mode;
+        self
+    }
+
+    /// Keep generated artifacts (temp file, rendered images) after a successful
+    /// sync instead of cleaning them up.
+    pub fn with_keep_artifacts(mut self, keep_artifacts: bool) -> Self {
+        self.keep_artifacts = keep_artifacts;
         self
     }
 }
@@ -382,9 +393,10 @@ pub async fn sync(config: SyncConfig) -> Result<SyncResult> {
         warn!("Failed to save cache: {}", e);
     }
 
-    // On success, remove the generated temp file and rendered images. On
-    // failure they are kept so the user (or developer) can inspect them.
-    if sync_result.is_ok() {
+    // On success, remove the generated temp file and rendered images (unless
+    // the caller asked to keep them). On failure they are kept so the user (or
+    // developer) can inspect them.
+    if sync_result.is_ok() && !ctx.config.keep_artifacts {
         if let Err(e) = ctx.cleanup().await {
             warn!("Cleanup failed: {}", e);
         }

@@ -216,12 +216,14 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
         .replace("<<SOURCE>>", relative_source_path)
         .replace("<<VERSION>>", PLUGIN_VERSION);
 
-    // In tests, the `ankify` Typst package is not installed in the package
-    // registry, so the import is rewritten to a local path instead.
+    // In tests the `ankify` Typst package is not published to the registry, so
+    // it is installed into a local package directory (pointed at by the
+    // TYPST_PACKAGE_PATH env var) and the import is rewritten from the
+    // `@preview` namespace to `@local`.
     let content = if std::env::var("ANKIFY_USE_LOCAL_IMPORTS").is_ok() {
         content.replace(
             &format!("@preview/ankify:{}", PLUGIN_VERSION),
-            "ankify-typst/lib.typ",
+            &format!("@local/ankify:{}", PLUGIN_VERSION),
         )
     } else {
         content
