@@ -131,10 +131,22 @@ dictionary to override the format per field.
 ### `format`
 
 - `plain` — the field is sent to Anki as plain text.
-- `png` / `svg` — the field is rendered to an image, so math, layout, colour
-  and figures are preserved. `svg` is crisp and scalable; `png` is a raster
-  image. Use `plain` for short text answers and `png`/`svg` for anything with
-  math or formatting.
+- `svg` — the field is rendered to SVG and inlined into the card. Crisp,
+  scalable, and **theme-aware** (see [Dark mode](#dark-mode) below).
+- `png` — the field is rendered to a raster image and attached as media. Use it
+  for genuinely raster content; `svg` is the better default for math and text.
+
+Use `plain` for short text answers and `svg`/`png` for anything with math or
+formatting.
+
+### Dark mode
+
+`svg` cards adapt to your Anki theme automatically. They render with a
+transparent background and a `currentColor` foreground, so they take on the
+card's own colours and follow Anki's light/dark mode with no extra setup.
+
+`png` cards are not theme-aware — a raster image can't recolour itself — so
+prefer `svg` if you review in dark mode.
 
 ### `configure()`
 

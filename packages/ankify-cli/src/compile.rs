@@ -330,20 +330,46 @@ async fn associate_files_with_notes(
         for field_name in sorted_fields {
             let field_value = &metadata_note.data[field_name];
             let field_format = Format::from(field_value.format.as_str());
+            let output_file = file_associations.get(&(note_index, field_name.as_str()));
             match field_format {
                 Format::Plain => {
-                    // For plain format, use the string value directly
-                    let text_content = field_value.value.clone();
+                    // Plain text goes straight into the field.
                     fields.insert(
                         Field::new(field_name.clone()),
-                        FieldValue::new(text_content),
+                        FieldValue::new(field_value.value.clone()),
                     );
                 }
-                _ => {
-                    // For image formats, create media file and reference it
-                    if let Some(output_file) =
-                        file_associations.get(&(note_index, field_name.as_str()))
-                    {
+                Format::Svg => {
+                    // SVG is inlined directly into the field, recoloured so it
+                    // follows the Anki card's (themed) text colour. Being part
+                    // of the card's DOM, an inline SVG can use `currentColor`;
+                    // an `<img>`-embedded SVG could not. No media file needed.
+                    match output_file.and_then(|files| files.get(&Format::Svg)) {
+                        Some(svg_path) => {
+                            let svg = fs::read_to_string(svg_path).map_err(|e| {
+                                Error::custom(format!(
+                                    "Failed to read SVG '{}': {}",
+                                    svg_path.display(),
+                                    e
+                                ))
+                            })?;
+                            fields.insert(
+                                Field::new(field_name.clone()),
+                                FieldValue::new(Some(theme_svg(&svg))),
+                            );
+                        }
+                        None => {
+                            fields.insert(
+                                Field::new(field_name.clone()),
+                                FieldValue::new(field_value.value.clone()),
+                            );
+                        }
+                    }
+                }
+                Format::Png => {
+                    // PNG is stored as an Anki media file, referenced via the
+                    // note's `picture` array.
+                    if let Some(output_file) = output_file {
                         let media_file = create_media_file(
                             output_file,
                             &metadata_note.label,
@@ -351,20 +377,15 @@ async fn associate_files_with_notes(
                             timestamp,
                             &field_format,
                         )?;
-
-                        let _filename = media_file.filename.clone();
                         fields.insert(
-                            Field::new(field_name.to_string()),
-                            FieldValue::new(Some("".to_string())),
+                            Field::new(field_name.clone()),
+                            FieldValue::new(Some(String::new())),
                         );
-
                         picture_files.push(media_file);
                     } else {
-                        // Fallback to text content if no output file found
-                        let text_content = field_value.value.clone();
                         fields.insert(
-                            Field::new(field_name.to_string()),
-                            FieldValue::new(text_content),
+                            Field::new(field_name.clone()),
+                            FieldValue::new(field_value.value.clone()),
                         );
                     }
                 }
@@ -433,6 +454,18 @@ fn create_file_associations<'a>(
     }
 
     Ok(associations)
+}
+
+/// Recolour a Typst-rendered SVG so it adapts to the Anki card's theme.
+///
+/// The card pages are rendered with no page fill, so the SVG is already
+/// transparent and the card's own (light/dark) background shows through. The
+/// foreground is rendered black by Typst; rewriting it to `currentColor` makes
+/// it follow the card's CSS `color`, which Anki themes for light/dark mode.
+/// Non-black colours (e.g. a coloured diagram) are deliberately left untouched.
+fn theme_svg(svg: &str) -> String {
+    svg.replace("fill=\"#000000\"", "fill=\"currentColor\"")
+        .replace("stroke=\"#000000\"", "stroke=\"currentColor\"")
 }
 
 /// Create a media file from an output file.

@@ -185,7 +185,9 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
   // Render one field per page, sizing each page snugly to its content so the
   // resulting card image has no superfluous whitespace. Content wider than
   // `max-width` wraps instead of producing an arbitrarily wide image; the whole
-  // card is then enlarged by the configured `scale` factor.
+  // card is then enlarged by the configured `scale` factor. The page has no
+  // fill, so the rendered card is transparent and the Anki card's own (themed)
+  // background shows through.
   let max-width = 14cm
   let card-margin = 5mm
   let card-scale = config.at("scale", default: 1.5) * 100%
@@ -198,7 +200,12 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
       )
       let w = calc.min(measure(body).width, max-width)
       let card = scale(card-scale, reflow: true, block(width: w, body))
-      set page(width: w * card-scale + 2 * card-margin, height: auto, margin: card-margin)
+      set page(
+        width: w * card-scale + 2 * card-margin,
+        height: auto,
+        margin: card-margin,
+        fill: none,
+      )
       card
       if i != items.len() - 1 {
         pagebreak(weak: false)

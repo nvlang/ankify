@@ -327,85 +327,68 @@ impl Cache {
         self.get(label).map(|entry| entry.id.clone())
     }
 
-    /// Create field hashes from note data values.
-    /// This is a utility function to help with creating hash maps for comparison.
+    /// Create a content hash for every field of a note, for change detection.
+    ///
+    /// Plain-text and SVG fields carry their own content in the field value
+    /// (SVG is inlined), so they are hashed directly. PNG fields reference a
+    /// rendered media file, which is hashed from disk.
     pub async fn create_field_hashes(
         &self,
         anki_note: &AnkiNote,
         note_metadata: &CompletedNote,
     ) -> Result<HashMap<Field, Option<Sha256>>> {
-        // Separate plain text and file-based futures
-        let mut plain_futures = Vec::new();
+        let mut field_hashes: HashMap<Field, Option<Sha256>> = HashMap::new();
         let mut file_futures = Vec::new();
 
         for (field, value) in &note_metadata.data {
             let field_key = Field::new(field.clone());
-            let value_clone = value.clone();
 
-            match Format::from(value.format.as_str()) {
-                Format::Plain => {
-                    // Create future for plain text hashing
-                    let future = async move {
-                        let hash = value_clone
-                            .value
-                            .and_then(|v| Some(Sha256::from_text(v.as_str())));
-                        (field_key, hash)
-                    };
-                    plain_futures.push(future);
-                }
-                _ => {
-                    // Create future for file-based hashing
-                    let file_path = PathBuf::from(
-                        // `anki_note.picture.find((note) => note.fields.contains(field))`
-                        anki_note
-                            .picture
-                            .as_ref()
-                            .unwrap_or(&Vec::new())
-                            .iter()
-                            .find(|media| {
-                                media.fields.as_ref().map_or(false, |fields| {
-                                    fields.iter().any(|f| f.as_str() == field)
-                                })
+            // A PNG field's content lives in a rendered media file; everything
+            // else (plain text, inline SVG) is carried in the field value.
+            let media_path = if Format::from(value.format.as_str()) == Format::Png {
+                anki_note.picture.as_ref().and_then(|pictures| {
+                    pictures
+                        .iter()
+                        .find(|media| {
+                            media.fields.as_ref().map_or(false, |fields| {
+                                fields.iter().any(|f| f.as_str() == field)
                             })
-                            .map_or_else(
-                                || value.value.clone().unwrap_or_default(),
-                                |media| media.path.as_ref().unwrap_or(&String::new()).clone(),
-                            ),
-                    );
+                        })
+                        .and_then(|media| media.path.clone())
+                })
+            } else {
+                None
+            };
 
-                    let future = async move {
-                        let content = fs::read(&file_path).await.map_err(|e| {
+            match media_path {
+                Some(path) => {
+                    let path = PathBuf::from(path);
+                    file_futures.push(async move {
+                        let content = fs::read(&path).await.map_err(|e| {
                             Error::cache(format!(
                                 "Failed to read media file '{}': {}",
-                                file_path.display(),
+                                path.display(),
                                 e
                             ))
                         })?;
-                        let hash = Sha256::from_bytes(&content);
-                        Ok::<(Field, Option<Sha256>), Error>((field_key, Some(hash)))
-                    };
-                    file_futures.push(future);
+                        Ok::<(Field, Option<Sha256>), Error>((
+                            field_key,
+                            Some(Sha256::from_bytes(&content)),
+                        ))
+                    });
+                }
+                None => {
+                    let hash = anki_note
+                        .fields
+                        .get(&field_key)
+                        .and_then(|v| v.0.as_ref())
+                        .map(|s| Sha256::from_text(s.as_str()));
+                    field_hashes.insert(field_key, hash);
                 }
             }
         }
 
-        // Process both types of futures in parallel
-        let (plain_results, file_results) = futures::future::join(
-            futures::future::join_all(plain_futures),
-            futures::future::join_all(file_futures),
-        )
-        .await;
-
-        // Collect results into HashMap
-        let mut field_hashes = HashMap::new();
-
-        // Add plain text results
-        for (field, hash) in plain_results {
-            field_hashes.insert(field, hash);
-        }
-
-        // Add file-based results
-        for result in file_results {
+        for result in futures::future::join_all(file_futures).await {
             let (field, hash) = result?;
             field_hashes.insert(field, hash);
         }

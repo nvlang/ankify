@@ -177,14 +177,13 @@ fn add_notes(requests: &[Value]) -> &Value {
         .expect("an addNotes request")
 }
 
-/// Width, in points, declared by an SVG file's root `<svg>` element.
-fn svg_width_pt(path: &str) -> f64 {
-    let svg = fs::read_to_string(path).expect("read svg");
+/// Width, in points, declared by an inline SVG's root `<svg>` element.
+fn svg_width_pt(svg: &str) -> f64 {
     let re = regex::Regex::new(r#"<svg[^>]*\bwidth="([0-9.]+)pt""#).unwrap();
-    re.captures(&svg)
+    re.captures(svg)
         .and_then(|c| c.get(1))
         .and_then(|m| m.as_str().parse().ok())
-        .unwrap_or_else(|| panic!("no width on <svg> in {path}"))
+        .expect("no width on the inline <svg>")
 }
 
 // ---------------------------------------------------------------------------
@@ -223,7 +222,7 @@ async fn plain_notes_carry_exact_field_text() {
 }
 
 #[tokio::test]
-async fn svg_notes_attach_valid_image_media() {
+async fn svg_notes_inline_themable_markup() {
     let project = TestProject::new(
         r#"#import "@local/ankify:0.1.0": note, configure
 #configure(defaults: (deck: "Svg Deck"))
@@ -234,24 +233,35 @@ async fn svg_notes_attach_valid_image_media() {
     outcome.result.expect("sync should succeed");
 
     let note = &add_notes(&outcome.requests)["params"]["notes"][0];
-    let pictures = note["picture"].as_array().expect("pictures");
-    assert_eq!(pictures.len(), 2);
-
-    for picture in pictures {
-        let path = picture["path"].as_str().expect("picture path");
+    // SVG fields are inlined into the field value — no media files.
+    assert!(
+        note.get("picture").map_or(true, Value::is_null),
+        "svg notes should attach no media files",
+    );
+    for field in ["Front", "Back"] {
+        let value = note["fields"][field].as_str().expect("field value");
+        assert!(value.contains("<svg"), "{field} should hold an inline SVG");
         assert!(
-            Path::new(path).is_absolute(),
-            "media path must be absolute so AnkiConnect can resolve it: {path}",
+            value.contains("currentColor"),
+            "{field}'s foreground should be themable (currentColor)",
         );
-        assert!(path.ends_with(".svg"));
-        let content = fs::read_to_string(path).expect("read media file");
-        assert!(content.contains("<svg"), "media file is not an SVG: {path}");
-
-        // The field text is emptied; the image is carried via `picture`.
-        let field = picture["fields"][0].as_str().unwrap();
-        assert_eq!(note["fields"][field], "");
-        assert!(picture["filename"].as_str().unwrap().ends_with(".svg"));
+        assert!(
+            !value.contains("#000000"),
+            "{field} should have no hard-coded black foreground left",
+        );
+        assert!(
+            !value.contains("#ffffff"),
+            "{field} should have a transparent (unfilled) background",
+        );
     }
+
+    // Re-syncing an unchanged note must hit the cache — caching still works
+    // even though the field now holds inline SVG rather than referencing a file.
+    let again = project.sync().await.result.expect("re-sync should succeed");
+    assert_eq!(
+        (again.notes_added, again.notes_updated, again.notes_unchanged),
+        (0, 0, 1),
+    );
 }
 
 #[tokio::test]
@@ -320,19 +330,18 @@ async fn field_images_map_to_the_correct_note_field() {
 
     // 5 mm of page margin on each side of the content box.
     let margin_pt = 2.0 * 5.0 / 25.4 * 72.0;
-    // (note index, picture index, field name, content box width in pt).
-    // Pictures are attached in alphabetical field order (Back, then Front).
+    // (note index, field name, content box width in pt).
     let expected = [
-        (0usize, 0usize, "Back", 40.0),
-        (0, 1, "Front", 100.0),
-        (1, 0, "Back", 160.0),
-        (1, 1, "Front", 220.0),
+        (0usize, "Back", 40.0),
+        (0, "Front", 100.0),
+        (1, "Back", 160.0),
+        (1, "Front", 220.0),
     ];
-    for (note_idx, pic_idx, field, box_width) in expected {
-        let picture = &notes[note_idx]["picture"][pic_idx];
-        assert_eq!(picture["fields"][0], field, "picture attached to wrong field");
-        let path = picture["path"].as_str().unwrap();
-        let actual = svg_width_pt(path);
+    for (note_idx, field, box_width) in expected {
+        let svg = notes[note_idx]["fields"][field]
+            .as_str()
+            .expect("inline svg field value");
+        let actual = svg_width_pt(svg);
         let want = box_width + margin_pt;
         assert!(
             (actual - want).abs() < 3.0,
@@ -361,11 +370,11 @@ async fn configurable_scale_resizes_card_images() {
         let project = TestProject::new(&source);
         let outcome = project.sync().await;
         outcome.result.expect("sync should succeed");
-        let path = add_notes(&outcome.requests)["params"]["notes"][0]["picture"][0]["path"]
+        let svg = add_notes(&outcome.requests)["params"]["notes"][0]["fields"]["Back"]
             .as_str()
-            .expect("picture path")
+            .expect("inline svg field value")
             .to_owned();
-        svg_width_pt(&path)
+        svg_width_pt(&svg)
     }
 
     let unscaled = card_width(doc("#configure(scale: 1.0)")).await;
