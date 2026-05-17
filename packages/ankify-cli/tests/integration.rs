@@ -454,3 +454,64 @@ async fn document_without_configure_does_not_crash() {
         .expect("sync must not crash when configure() is absent");
     assert_eq!(result.notes_added, 1);
 }
+
+/// A field's value may be a `(format, value)` dictionary that overrides the
+/// note's format per field, and formats may be mixed within a single note.
+/// A note's own `deck` overrides the configured default, and several distinct
+/// decks in one document each get created.
+#[tokio::test]
+async fn per_field_formats_and_per_note_decks() {
+    let project = TestProject::new(
+        r#"#import "@local/ankify:0.1.0": note, configure
+#configure(defaults: (deck: "Default Deck"))
+#note(
+  "mixed",
+  deck: "Deck A",
+  data: (
+    Front: (format: "plain", value: "Plain question"),
+    Back: (format: "svg", value: [$a^2 + b^2 = c^2$]),
+  ),
+)
+#note("plain-note", deck: "Deck B", format: "plain", data: (Front: "Q2", Back: "A2"))
+"#,
+    );
+    let outcome = project.sync().await;
+    let result = outcome.result.expect("sync should succeed");
+    assert_eq!(result.notes_added, 2);
+    // Two distinct, non-cached decks are each created.
+    assert_eq!(result.decks_created, 2);
+
+    let notes = add_notes(&outcome.requests)["params"]["notes"]
+        .as_array()
+        .unwrap()
+        .clone();
+    // Note 1: per-note deck override, plus a plain field and an SVG field
+    // mixed within the same note via per-field `(format, value)` dicts.
+    assert_eq!(notes[0]["deckName"], "Deck A");
+    assert_eq!(notes[0]["fields"]["Front"], "Plain question");
+    let back = notes[0]["fields"]["Back"].as_str().expect("Back field value");
+    assert!(back.contains("<svg"), "the svg-format field should be inline SVG");
+    assert!(notes[0].get("picture").map_or(true, Value::is_null));
+    // Note 2: a different per-note deck.
+    assert_eq!(notes[1]["deckName"], "Deck B");
+}
+
+#[tokio::test]
+async fn document_with_no_notes_is_a_no_op() {
+    let project = TestProject::new(
+        r#"#import "@local/ankify:0.1.0": configure
+#configure(defaults: (deck: "Empty"))
+
+= A document with prose but no flashcards
+"#,
+    );
+    let result = project
+        .sync()
+        .await
+        .result
+        .expect("sync should succeed on a document with no notes");
+    assert_eq!(
+        (result.notes_added, result.notes_updated, result.notes_unchanged),
+        (0, 0, 0),
+    );
+}
