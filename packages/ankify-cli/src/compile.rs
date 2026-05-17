@@ -443,6 +443,17 @@ pub fn create_media_file(
     timestamp: i64,
     format: &Format,
 ) -> Result<MediaFile> {
+    // AnkiConnect resolves a media file's `path` relative to Anki's own working
+    // directory, not ours — so it must be sent as an absolute path.
+    let path = &output_file[format];
+    let absolute_path = std::fs::canonicalize(path).map_err(|e| {
+        Error::custom(format!(
+            "Failed to resolve output file path '{}': {}",
+            path.display(),
+            e
+        ))
+    })?;
+
     Ok(MediaFile {
         filename: format!(
             "{}@@{}@@{}.{}",
@@ -452,7 +463,7 @@ pub fn create_media_file(
             format.extension()
         ),
         data: None,
-        path: Some(output_file[format].to_string_lossy().to_string()),
+        path: Some(absolute_path.to_string_lossy().to_string()),
         url: None,
         skip_hash: None,
         fields: Some(vec![Field::new(field_name.to_string())]),

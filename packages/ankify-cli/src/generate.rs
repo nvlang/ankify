@@ -1,58 +1,48 @@
 //! This module is responsible for generating temporary Typst files that will
 //! then be compiled by the `compile` module.
 //!
-//! The idea is essentially this: given `"source.typ"` (the hypothetical Typst
-//! file being processed) and Typst plugin version `"0.1.0"`, this module should
-//! generate the following temporary Typst file in a temporary `.ankify` directory:
+//! The generated file imports the user's source document and the `ankify`
+//! Typst package, then renders every note field — one per page — so that the
+//! `compile` module can turn each page into an image.
+//!
+//! The crucial invariant is *page ordering*: page `N` must contain field `N`
+//! (counting notes in document order, and fields within a note in alphabetical
+//! order). The `compile` module relies on this 1:1 mapping.
+//!
+//! To uphold that invariant, the note fields are rendered *first* (pages
+//! `1..=N`), and only afterwards is the source document itself re-run — hidden,
+//! on trailing pages that the CLI ignores. Re-running the source is what makes
+//! the `note()`/`configure()` calls register their state; reading `.final()`
+//! before those trailing pages still observes every update, because `.final()`
+//! always yields the end-of-document value regardless of where it is read.
+//!
+//! Rendering the source last (instead of first, hidden, as an earlier version
+//! did) matters because a real lecture document produces an unpredictable
+//! number of pages — putting it first would shift every field's page number.
+//!
+//! The generated file looks like this:
 //!
 //! ```typst
-//! #import "../source.typ"
+//! #import "../source.typ" as __ankify-source-file
 //! #import "@preview/ankify:0.1.0": __ankify-configuration, __ankify-notes
-//! #hide([#source])
+//!
 //! #set page(width: 105mm, height: auto, margin: 5mm)
 //!
-//! #show: body => {
-//!   context {
-//!     let config = __ankify-configuration.final()
-//!     if config.setup != none {
-//!       (config.setup)(body)
-//!     }
-//!   }
+//! #context {
+//!   let config = __ankify-configuration.final()
+//!   let notes = __ankify-notes.final()
+//!   // ... flatten fields, then render one per page ...
 //! }
 //!
-//! #context {
-//!   let notes = __ankify-notes.final()
-//!   let notes-len = notes.len()
-//!   let current-note-index = 0
-//!   for note in notes {
-//!     let sorted-data = note.data.pairs().sorted()
-//!     let fields-len = sorted-data.len()
-//!     let current-field-index = 0
-//!     for (field, value) in sorted-data {
-//!       let field-content = none
-//!       if (type(value) == dictionary and "value" in value) {
-//!         field-content = value.value
-//!       } else if (type(value) == content or type(value) == str) {
-//!         field-content = value
-//!       } else {
-//!         panic("Invalid type for note data field", field)
-//!       }
-//!       (note.render)(note: note, field: field, field-content: field-content)
-//!       if current-note-index != notes-len - 1 or current-field-index != fields-len - 1 {
-//!           pagebreak(weak: false)
-//!       }
-//!       current-field-index += 1
-//!     }
-//!     current-note-index += 1
-//!   }
-//! }
+//! #pagebreak(weak: false)
+//! #set page(width: 210mm, height: 297mm, margin: 20mm)
+//! #hide([#__ankify-source-file])
 //! ```
 //!
-//! Note that importing the source file from the parent directory will require
-//! the compilation to have a `--root` flag set to the parent directory of the
-//! source file. Furthermore, note that the `source` part in `#hide([#source])`
-//! comes from the `source.typ` file name, so it will also have to be different
-//! depending on the source file name.
+//! Note that importing the source file from the parent directory requires the
+//! compilation to use a `--root` flag covering both the temp file and the
+//! source. The `__ankify-source-file` import path is relative to the temp
+//! file's location, so it depends on the source file's name and directory.
 
 use crate::error::{Error, Result};
 use std::fs;
@@ -149,6 +139,10 @@ pub fn generate_temp_file(config: &GenerateConfig) -> Result<PathBuf> {
 }
 
 /// Generate the Typst content for the temporary file.
+///
+/// The template uses `<<SOURCE>>` and `<<VERSION>>` placeholders rather than
+/// `format!` interpolation so that the (brace-heavy) Typst code can be written
+/// literally, without escaping every `{` and `}`.
 fn generate_typst_content(relative_source_path: &str) -> Result<String> {
     // Validate inputs
     if relative_source_path.is_empty() {
@@ -157,52 +151,73 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
         ));
     }
 
-    let content = format!(
-        r#"#import "{relative_source_path}" as __ankify-source-file
-#import "@preview/ankify:{PLUGIN_VERSION}": __ankify-configuration, __ankify-notes
-#hide([#__ankify-source-file])
+    const TEMPLATE: &str = r#"#import "<<SOURCE>>" as __ankify-source-file
+#import "@preview/ankify:<<VERSION>>": __ankify-configuration, __ankify-notes
+
+// Default geometry for the rendered card images. The user's `setup` function
+// (if any) is applied below and may override this.
 #set page(width: 105mm, height: auto, margin: 5mm)
 
-#show: body => {{
-  context {{
-    let config = __ankify-configuration.final()
-    if config.setup != none {{
-      (config.setup)(body)
-    }}
-  }}
-}}
-
-#context {{
+#context {
+  let config = __ankify-configuration.final()
   let notes = __ankify-notes.final()
-  let notes-len = notes.len()
-  let current-note-index = 0
-  for note in notes {{
-    let sorted-data = note.data.pairs().sorted()
-    let fields-len = sorted-data.len()
-    let current-field-index = 0
-    for (field, value) in sorted-data {{
-      let field-content = none
-      if (type(value) == dictionary and "value" in value) {{
-        field-content = value.value
-      }} else if (type(value) == content or type(value) == str) {{
-        field-content = value
-      }} else {{
-        panic("Invalid type for note data field", field)
-      }}
-      (note.render)(note: note, field: field, field-content: field-content)
-      if current-note-index != notes-len - 1 or current-field-index != fields-len - 1 {{
-          pagebreak(weak: false)
-      }}
-      current-field-index += 1
-    }}
-    current-note-index += 1
-  }}
-}}
-"#
-    );
 
-    // If we're in a test environment, we want to replace the import statement for ankify
-    // with a local path to the plugin.
+  let raw-setup = config.at("setup", default: none)
+  let setup = if raw-setup == none { (body) => body } else { raw-setup }
+
+  // Flatten every note's fields into a single ordered list. Notes keep their
+  // document order; fields within a note are sorted by name. The CLI walks
+  // fields in this exact same order, so list index I corresponds to page I+1.
+  let items = ()
+  for note in notes {
+    for (field, value) in note.data.pairs().sorted() {
+      let field-content = if type(value) == dictionary and "value" in value {
+        value.value
+      } else if type(value) in (content, str) {
+        value
+      } else {
+        panic("Invalid type for note data field: " + field)
+      }
+      items.push((note: note, field: field, content: field-content))
+    }
+  }
+
+  // Render one field per page, sizing each page snugly to its content so the
+  // resulting card image has no superfluous whitespace. Content wider than
+  // `max-width` wraps instead of producing an arbitrarily wide image.
+  let max-width = 14cm
+  let card-margin = 5mm
+  setup({
+    for (i, item) in items.enumerate() {
+      let body = (item.note.render)(
+        note: item.note,
+        field: item.field,
+        field-content: item.content,
+      )
+      let w = calc.min(measure(body).width, max-width)
+      set page(width: w + 2 * card-margin, height: auto, margin: card-margin)
+      block(width: w, body)
+      if i != items.len() - 1 {
+        pagebreak(weak: false)
+      }
+    }
+  })
+}
+
+// Re-run the source document so that its `note()`/`configure()` calls register
+// their state. It is rendered hidden, on trailing pages that the CLI ignores
+// (the CLI only consumes the first N pages, one per note field).
+#pagebreak(weak: false)
+#set page(width: 210mm, height: 297mm, margin: 20mm)
+#hide([#__ankify-source-file])
+"#;
+
+    let content = TEMPLATE
+        .replace("<<SOURCE>>", relative_source_path)
+        .replace("<<VERSION>>", PLUGIN_VERSION);
+
+    // In tests, the `ankify` Typst package is not installed in the package
+    // registry, so the import is rewritten to a local path instead.
     let content = if std::env::var("ANKIFY_USE_LOCAL_IMPORTS").is_ok() {
         content.replace(
             &format!("@preview/ankify:{}", PLUGIN_VERSION),
@@ -291,4 +306,41 @@ pub fn cleanup_temp_files(dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The note fields must be rendered *before* the source document so that
+    /// output page N maps to note field N. Rendering the source first would
+    /// shift every field's page number by the (unpredictable) source page
+    /// count — the exact bug this ordering guards against.
+    #[test]
+    fn template_renders_fields_before_source() {
+        let content = generate_typst_content("../notes.typ").unwrap();
+        let fields_pos = content
+            .find("__ankify-notes.final()")
+            .expect("field rendering should be present");
+        let source_pos = content
+            .find("#hide([#__ankify-source-file])")
+            .expect("source rendering should be present");
+        assert!(
+            fields_pos < source_pos,
+            "note fields must be rendered before the source document"
+        );
+    }
+
+    #[test]
+    fn template_substitutes_all_placeholders() {
+        let content = generate_typst_content("../notes.typ").unwrap();
+        assert!(content.contains("../notes.typ"));
+        assert!(!content.contains("<<SOURCE>>"));
+        assert!(!content.contains("<<VERSION>>"));
+    }
+
+    #[test]
+    fn empty_source_path_is_rejected() {
+        assert!(generate_typst_content("").is_err());
+    }
 }

@@ -141,7 +141,7 @@
 //! - Cache persistence for subsequent runs to enable incremental updates
 
 use crate::ankiconnect::{AnkiAction, AnkiConnect, Field, Note as AnkiNote, NoteId};
-use crate::cache::{Cache, Sha256};
+use crate::cache::{Cache, CacheEntry, Sha256};
 use crate::compile::{compile_temp_file, CompileConfig, Format};
 use crate::error::{Error, Result};
 use crate::generate::generate_temp_file;
@@ -155,7 +155,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tokio::fs;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Configuration for the sync operation.
 #[derive(Debug, Clone)]
@@ -376,14 +376,18 @@ pub async fn sync(config: SyncConfig) -> Result<SyncResult> {
     // Ensure cleanup happens even if we encounter errors
     let sync_result = sync_internal(&mut ctx, &mut result).await;
 
-    // // Always try to clean up
-    // if let Err(e) = ctx.cleanup().await {
-    //     warn!("Cleanup failed: {}", e);
-    // }
-
-    // Always try to save cache if there were any changes
+    // Always try to save the cache, even on failure: any notes that did sync
+    // before the error should not be re-sent next time.
     if let Err(e) = ctx.save_cache().await {
         warn!("Failed to save cache: {}", e);
+    }
+
+    // On success, remove the generated temp file and rendered images. On
+    // failure they are kept so the user (or developer) can inspect them.
+    if sync_result.is_ok() {
+        if let Err(e) = ctx.cleanup().await {
+            warn!("Cleanup failed: {}", e);
+        }
     }
 
     sync_result.map(|_| result)
@@ -401,11 +405,20 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
     })?;
     ctx.temp_files.push(temp_file.clone());
 
-    // Step 3: Query Typst for configuration and notes (in parallel)
-    let extra_args = vec!["--root", "."];
+    // Step 3: Query Typst for configuration and notes (in parallel).
+    // Honour the user's --root / --font-path flags, defaulting --root to the
+    // current directory when the user did not pass one.
+    let mut query_args: Vec<&str> = ctx.config.extra_args.iter().map(String::as_str).collect();
+    if !query_args
+        .iter()
+        .any(|a| *a == "--root" || a.starts_with("--root="))
+    {
+        query_args.insert(0, ".");
+        query_args.insert(0, "--root");
+    }
     let (ankify_config, metadata_notes) = tokio::try_join!(
-        query_ankify_configuration(&ctx.config.source_file, Some(&extra_args)),
-        query_ankify_notes(&ctx.config.source_file, Some(&extra_args))
+        query_ankify_configuration(&ctx.config.source_file, Some(&query_args)),
+        query_ankify_notes(&ctx.config.source_file, Some(&query_args))
     )?;
 
     if metadata_notes.is_empty() {
@@ -427,7 +440,8 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
         ctx.config.source_file.clone(),
         temp_file.parent().unwrap().join("output"),
         completed_metadata_notes.clone(),
-    );
+    )
+    .with_extra_args(ctx.config.extra_args.clone());
 
     // Create output directory
     tokio::fs::create_dir_all(&compile_config.output_dir)
@@ -456,6 +470,28 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
         &processed_notes,
     )
     .await?;
+
+    // Refresh cache entries for existing notes. New notes were cached when
+    // `addNotes` returned their IDs; existing notes must be refreshed here so
+    // that an updated note is not detected as "changed" again on the next sync.
+    // (Reaching this point means every request succeeded — `execute_requests`
+    // propagates any AnkiConnect error.)
+    for note in &processed_notes {
+        if note.is_new {
+            continue;
+        }
+        if let Some(id) = ctx.cache.get_note_id(&note.metadata.label) {
+            ctx.cache
+                .update_from_note(&note.metadata, id, note.field_hashes.clone())
+                .await?;
+        }
+    }
+
+    // Any processed note that was neither added nor updated was unchanged.
+    result.notes_unchanged = processed_notes
+        .len()
+        .saturating_sub(result.notes_added)
+        .saturating_sub(result.notes_updated);
 
     if ctx.config.cli_mode {
         info!(
@@ -543,6 +579,32 @@ async fn process_notes_with_hashes(
     Ok(processed_notes)
 }
 
+/// Determine whether an existing note differs from its cached state and thus
+/// needs an `updateNote` request.
+///
+/// Note: a note's deck cannot be changed via `updateNote` (AnkiConnect only
+/// moves cards between decks via `changeDeck`), so a deck change is not treated
+/// as an update here.
+fn note_changed(note: &ProcessedNote, cached: &CacheEntry) -> bool {
+    // A field's content changed, or a field was added.
+    for (field, new_hash) in &note.field_hashes {
+        if cached.hash.get(field) != Some(new_hash) {
+            return true;
+        }
+    }
+    // A field was removed.
+    for field in cached.hash.keys() {
+        if !note.field_hashes.contains_key(field) {
+            return true;
+        }
+    }
+    // Tags changed.
+    if note.anki_note.tags.clone().unwrap_or_default() != cached.tags {
+        return true;
+    }
+    false
+}
+
 /// Create the request list for AnkiConnect operations.
 async fn create_request_list(
     processed_notes: &[ProcessedNote],
@@ -608,29 +670,9 @@ async fn create_request_list(
     let notes_to_update: Vec<_> = processed_notes
         .iter()
         .filter(|note| !note.is_new)
-        .filter(|note| {
-            // Check if the note has changed by comparing hashes
-            if let Some(cached_entry) = cache.get(&note.metadata.label) {
-                // Compare field hashes to see if anything changed
-                for (field, new_hash) in &note.field_hashes {
-                    if let Some(cached_hash) = cached_entry.hash.get(field) {
-                        if cached_hash != new_hash {
-                            return true; // Field has changed
-                        }
-                    } else {
-                        return true; // New field added
-                    }
-                }
-                // Check if any fields were removed
-                for field in cached_entry.hash.keys() {
-                    if !note.field_hashes.contains_key(field) {
-                        return true; // Field was removed
-                    }
-                }
-                false // No changes
-            } else {
-                true // Should not happen, but treat as changed
-            }
+        .filter(|note| match cache.get(&note.metadata.label) {
+            Some(cached_entry) => note_changed(note, cached_entry),
+            None => true, // Should not happen (filtered by !is_new), treat as changed
         })
         .collect();
 
@@ -681,16 +723,9 @@ async fn execute_requests(
     result: &mut SyncResult,
     processed_notes: &[ProcessedNote],
 ) -> Result<()> {
-    // print request list for debugging
-    if cfg!(debug_assertions) {
-        match serde_json::to_string_pretty(&serde_json::json!(request_list)) {
-            Ok(pretty) => {
-                println!("Request List (pretty):\n{}", pretty);
-            }
-            Err(_) => {
-                println!("Request List: {:?}", request_list);
-            }
-        }
+    // Log the request list (visible with `RUST_LOG=debug`).
+    if let Ok(pretty) = serde_json::to_string_pretty(request_list) {
+        debug!("Request list:\n{}", pretty);
     }
 
     // Execute requests sequentially to ensure proper ordering

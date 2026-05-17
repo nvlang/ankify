@@ -24,15 +24,24 @@ pub async fn query_ankify_configuration(
 ) -> Result<CompletedTypstAnkifyConfiguration> {
     let values = query_typst_metadata(typst_file, "ankify-configuration", extra_args).await?;
 
-    // Take the first configuration found
-    let config_value = &values[0];
-    let config: TypstAnkifyConfiguration = serde_json::from_value(config_value.clone())
-        .map_err(|e| Error::typst(format!("Failed to parse ankify configuration: {}", e)))?;
+    // A document need not call `configure()` at all — fall back to defaults in
+    // that case. If `configure()` is called more than once, the last call
+    // reflects the most up-to-date (merged) configuration.
+    let config: TypstAnkifyConfiguration = match values.last() {
+        Some(config_value) => serde_json::from_value(config_value.clone())
+            .map_err(|e| Error::typst(format!("Failed to parse ankify configuration: {}", e)))?,
+        None => TypstAnkifyConfiguration {
+            ankiconnect_url: None,
+            verbose: None,
+            setup: None,
+            cache: None,
+            checks: None,
+            defaults: None,
+        },
+    };
 
     // Apply defaults to the configuration and convert to completed version
-    let completed_config = apply_configuration_defaults(config);
-
-    Ok(completed_config)
+    Ok(apply_configuration_defaults(config))
 }
 
 /// Function that essentially executes the following shell command:
