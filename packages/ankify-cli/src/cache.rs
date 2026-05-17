@@ -350,9 +350,10 @@ impl Cache {
                     pictures
                         .iter()
                         .find(|media| {
-                            media.fields.as_ref().map_or(false, |fields| {
-                                fields.iter().any(|f| f.as_str() == field)
-                            })
+                            media
+                                .fields
+                                .as_ref()
+                                .is_some_and(|fields| fields.iter().any(|f| f.as_str() == field))
                         })
                         .and_then(|media| media.path.clone())
                 })

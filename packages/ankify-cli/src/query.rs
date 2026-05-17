@@ -89,7 +89,7 @@ fn apply_defaults_to_note(note: &mut Note, config: &CompletedTypstAnkifyConfigur
     }
 
     // Apply other field defaults
-    if note.other.as_object().map_or(true, |obj| obj.is_empty()) {
+    if note.other.as_object().is_none_or(|obj| obj.is_empty()) {
         note.other = config.defaults.other.clone().unwrap_or_default();
     }
 }
