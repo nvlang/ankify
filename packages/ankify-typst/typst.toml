@@ -8,4 +8,4 @@ description = "Sync from Typst to Anki."
 repository = "https://github.com/nvlang/ankify"
 keywords = ["anki", "flashcards"]
 categories = ["integration", "scripting", "utility"]
-compiler = "0.13"
+compiler = "0.14.0"
