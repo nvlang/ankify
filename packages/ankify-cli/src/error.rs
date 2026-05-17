@@ -17,18 +17,6 @@ pub enum Error {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
-    /// Glob pattern errors
-    #[error("Glob pattern error: {0}")]
-    Glob(#[from] glob::GlobError),
-
-    /// Glob pattern syntax errors
-    #[error("Glob pattern syntax error: {0}")]
-    GlobPattern(#[from] glob::PatternError),
-
-    /// File watching errors
-    #[error("File watching error: {0}")]
-    Watch(#[from] notify::Error),
-
     /// Typst execution errors
     #[error("Typst error: {0}")]
     Typst(String),

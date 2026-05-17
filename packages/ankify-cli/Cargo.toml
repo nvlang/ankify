@@ -24,62 +24,28 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 
 # Error handling
-anyhow = { workspace = true }
 thiserror = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# File system operations
-glob = { workspace = true }
-walkdir = { workspace = true }
-notify = { workspace = true }
-tempfile = { workspace = true }
-
-# Hashing and caching
+# Hashing
 sha2 = { workspace = true }
-hex = { workspace = true }
-uuid = { workspace = true }
-
-# Base64 encoding for images
-base64 = { workspace = true }
 
 # Date and time handling
 chrono = { workspace = true }
 
-# Typst for content parsing and serialization
-typst = { workspace = true }
-typst-eval = { workspace = true }
-typst-html = { workspace = true }
-typst-kit = { workspace = true }
-typst-macros = { workspace = true }
-typst-pdf = { workspace = true }
-typst-render = { workspace = true }
-typst-svg = { workspace = true }
-typst-timing = { workspace = true }
-
-# File watching
+# Async combinators
 futures = { workspace = true }
 
 # Path handling
 pathdiff = { workspace = true }
 
 [dev-dependencies]
-# Testing utilities
-tokio-test = { workspace = true }
-mockito = { workspace = true }
 tempfile = { workspace = true }
 wiremock = { workspace = true }
-proptest = { workspace = true }
-rand = { workspace = true }
-assert_cmd = { workspace = true }
-predicates = { workspace = true }
 regex = "1.10"
-
-# Image comparison for PNG validation
-image = "0.24"
-imageproc = "0.23"
 
 [[bin]]
 name = "ankify"
