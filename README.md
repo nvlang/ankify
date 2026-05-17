@@ -144,11 +144,14 @@ Optional — call it once near the top of the document.
 #configure(
   ankiconnect-url: "http://localhost:8765",
   verbose: true,
+  scale: 1.5,
   defaults: (deck: "My Course", model: "Basic", tags: ("lecture",), format: "svg"),
 )
 ```
 
-If you omit `configure()` entirely, built-in defaults are used.
+`scale` enlarges every rendered card image (default `1.5`) — raise it if your
+cards look too small, lower it towards `1.0` if they look too big. If you omit
+`configure()` entirely, built-in defaults are used.
 
 ### Re-syncing
 

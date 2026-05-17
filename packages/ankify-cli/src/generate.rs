@@ -184,9 +184,11 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
 
   // Render one field per page, sizing each page snugly to its content so the
   // resulting card image has no superfluous whitespace. Content wider than
-  // `max-width` wraps instead of producing an arbitrarily wide image.
+  // `max-width` wraps instead of producing an arbitrarily wide image; the whole
+  // card is then enlarged by the configured `scale` factor.
   let max-width = 14cm
   let card-margin = 5mm
+  let card-scale = config.at("scale", default: 1.5) * 100%
   setup({
     for (i, item) in items.enumerate() {
       let body = (item.note.render)(
@@ -195,8 +197,9 @@ fn generate_typst_content(relative_source_path: &str) -> Result<String> {
         field-content: item.content,
       )
       let w = calc.min(measure(body).width, max-width)
-      set page(width: w + 2 * card-margin, height: auto, margin: card-margin)
-      block(width: w, body)
+      let card = scale(card-scale, reflow: true, block(width: w, body))
+      set page(width: w * card-scale + 2 * card-margin, height: auto, margin: card-margin)
+      card
       if i != items.len() - 1 {
         pagebreak(weak: false)
       }

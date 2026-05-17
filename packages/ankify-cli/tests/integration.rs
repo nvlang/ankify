@@ -290,7 +290,7 @@ async fn png_notes_attach_valid_image_media() {
 async fn field_images_map_to_the_correct_note_field() {
     let project = TestProject::new(
         r#"#import "@local/ankify:0.1.0": note, configure
-#configure(defaults: (deck: "Mapping"))
+#configure(scale: 1.0, defaults: (deck: "Mapping"))
 
 = A heading that renders before any notes
 
@@ -340,6 +340,50 @@ async fn field_images_map_to_the_correct_note_field() {
              — the field-to-image mapping is wrong",
         );
     }
+}
+
+/// `configure(scale: ...)` enlarges rendered card images, and the default
+/// scale already makes them larger than the unscaled content.
+#[tokio::test]
+async fn configurable_scale_resizes_card_images() {
+    // Each note's single field is a 100pt-wide box; 5 mm of margin per side.
+    let margin_pt = 2.0 * 5.0 / 25.4 * 72.0;
+    let doc = |configure: &str| {
+        format!(
+            r#"#import "@local/ankify:0.1.0": note, configure
+{configure}
+#note("sc", format: "svg", data: (Back: box(width: 100pt, height: 30pt, fill: black)))
+"#
+        )
+    };
+
+    async fn card_width(source: String) -> f64 {
+        let project = TestProject::new(&source);
+        let outcome = project.sync().await;
+        outcome.result.expect("sync should succeed");
+        let path = add_notes(&outcome.requests)["params"]["notes"][0]["picture"][0]["path"]
+            .as_str()
+            .expect("picture path")
+            .to_owned();
+        svg_width_pt(&path)
+    }
+
+    let unscaled = card_width(doc("#configure(scale: 1.0)")).await;
+    let default = card_width(doc("#configure()")).await;
+    let tripled = card_width(doc("#configure(scale: 3.0)")).await;
+
+    assert!(
+        (unscaled - (100.0 + margin_pt)).abs() < 3.0,
+        "scale 1.0: image is {unscaled:.1}pt wide",
+    );
+    assert!(
+        (default - (150.0 + margin_pt)).abs() < 3.0,
+        "default scale (1.5): image is {default:.1}pt wide",
+    );
+    assert!(
+        (tripled - (300.0 + margin_pt)).abs() < 5.0,
+        "scale 3.0: image is {tripled:.1}pt wide",
+    );
 }
 
 #[tokio::test]

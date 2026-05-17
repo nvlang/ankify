@@ -3,6 +3,7 @@
 #let default-configuration = (
   ankiconnect-url: "http://localhost:8765",
   verbose: false,
+  scale: 1.5,
   defaults: (
     model: "Basic",
     deck: "Default",
@@ -97,6 +98,7 @@
     assertions: (z.assert.length.min(1),),
   ),
   verbose: z.boolean(default: default-configuration.verbose),
+  scale: z.number(default: default-configuration.scale),
   defaults: defaults-schema,
   setup: z.function(default: default-configuration.setup),
   cache: z.dictionary((

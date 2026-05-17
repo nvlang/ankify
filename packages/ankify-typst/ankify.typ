@@ -197,6 +197,7 @@
 ///
 /// - `ankiconnect-url` (optional): URL for AnkiConnect API
 /// - `verbose` (optional): Enable verbose output
+/// - `scale` (optional): Factor by which rendered card images are enlarged (default: 1.5)
 /// - `defaults` (optional): Default values for card fields
 /// - `setup` (optional): Setup function
 /// - `render` (optional): Render function
@@ -276,6 +277,13 @@
 // - verbose (bool): Enable verbose output.
 //
 //   _Default:_ `false`
+//
+// - scale (int | float): Factor by which every rendered card image is
+//   enlarged. `1.0` renders at natural size; the default `1.5` makes cards
+//   larger and easier to read. Increase it further if your cards still look
+//   too small.
+//
+//   _Default:_ `1.5`
 //
 // - defaults (dictionary): Default values for notes.
 //
@@ -367,6 +375,7 @@
 #let configure(
   ankiconnect-url: "http://localhost:8765",
   verbose: false,
+  scale: none,
   defaults: (
     model: "Basic",
     deck: "Default",
@@ -393,6 +402,7 @@
     let new-config = (
       ankiconnect-url: ankiconnect-url,
       verbose: verbose,
+      scale: scale,
       setup: setup,
       defaults: defaults,
       cache: cache,
