@@ -182,11 +182,11 @@ existing card between decks.)
 ```
 ankify <FILE> [options]
 
-  -v, --verbose             Verbose output
-      --cache-file <PATH>   Custom cache file location
-      --ankiconnect-url <URL>   AnkiConnect URL (default: http://127.0.0.1:8765)
-      --root <DIR>          Typst project root
-      --font-path <PATH>    Additional font path (repeatable)
+  -v, --verbose                Verbose output
+      --cache-file <PATH>      Custom cache file location
+      --ankiconnect-url <URL>  AnkiConnect URL (default: http://127.0.0.1:8765)
+      --root <DIR>             Typst project root
+      --font-path <PATH>       Additional font path (repeatable)
 ```
 
 ## Project layout

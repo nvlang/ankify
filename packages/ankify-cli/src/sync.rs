@@ -75,14 +75,6 @@
 //!         `RequestList` with the `multi` field set to `true`, so that
 //!         the requests are sent to AnkiConnect simultaneously.
 //!
-//!     Note that, if a note's field has an output file associated with it, then
-//!     the field should be set to `"<img class=\"ankify\"
-//!     src=\"〈output-file〉\"/>"` in the note's `fields` field, and the output
-//!     file should be included _in the same request_ (be it an `addNotes` or an
-//!     `updateNote` request) in the `picture` array, with `url` set to the path
-//!     to the output file, `filename` set to `"〈output-file〉"`, and `fields`
-//!     set to `["〈field〉"]`.
-//!
 //! 7.  *Execution.* Process the `RequestList` and send the corresponding
 //!     requests AnkiConnect. Make use of the `ankiconnect` module to understand
 //!     the responses from AnkiConnect. While doing all this, be sure to handle
@@ -137,7 +129,7 @@
 //! ### Execution and Caching
 //! - `execute_requests()` - Sends requests to AnkiConnect sequentially to maintain proper ordering
 //! - `update_cache_with_added_notes()` - Updates cache with new note IDs returned by AnkiConnect
-//! - Field hashing using `cache.create_field_hashes_from_note_data()` for change detection
+//! - Field hashing using `cache.create_field_hashes()` for change detection
 //! - Cache persistence for subsequent runs to enable incremental updates
 
 use crate::ankiconnect::{AnkiAction, AnkiConnect, Field, Note as AnkiNote, NoteId};
