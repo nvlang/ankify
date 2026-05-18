@@ -2,7 +2,7 @@
 name = "ankify"
 version = "0.1.0"
 entrypoint = "lib.typ"
-authors = ["N. V. Lang <@nvlang>"]
+authors = ["N. V. Lang"]
 license = "MIT"
 description = "Generate and sync Anki flashcards from your Typst documents."
 repository = "https://github.com/nvlang/ankify"
