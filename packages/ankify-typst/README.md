@@ -8,20 +8,16 @@
 <br>
 <br>
 
-[
-<picture>
+[<picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/packages/ankify-_?style=flat-square&logo=typst&logoColor=a3acb7&labelColor=21262d&color=21262d&logoSize=auto)">
     <source media="(prefers-color-scheme: light)" srcset="https://img.shields.io/badge/packages/ankify-_?style=flat-square&logo=typst&logoColor=24292f&labelColor=eaeef2&color=eaeef2&logoSize=auto)">
     <img alt="Typst package name" src="https://img.shields.io/badge/packages/ankify-_?style=flat-square&logo=typst&logoColor=24292f&labelColor=eaeef2&color=eaeef2&logoSize=auto)">
-</picture>
-](https://typst.app/universe/package/ankify)
-[
-<picture>
+</picture>](https://typst.app/universe/package/ankify)
+[<picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/crates/ankify-_?style=flat-square&logo=rust&logoColor=a3acb7&labelColor=21262d&color=21262d&logoSize=auto)">
     <source media="(prefers-color-scheme: light)" srcset="https://img.shields.io/badge/crates/ankify-_?style=flat-square&logo=rust&logoColor=24292f&labelColor=eaeef2&color=eaeef2&logoSize=auto)">
     <img alt="Rust crate name" src="https://img.shields.io/badge/crates/ankify-_?style=flat-square&logo=rust&logoColor=24292f&labelColor=eaeef2&color=eaeef2&logoSize=auto)">
-</picture>
-](https://crates.io/crates/ankify)
+</picture>](https://crates.io/crates/ankify)
 
 <p><em>Author Anki flashcards inside your Typst documents.</em></p>
 </div>
