@@ -1,6 +1,6 @@
 [package]
 name = "ankify"
-version = "2.0.0"
+version = "0.1.0"
 edition = "2021"
 description = "Advanced Typst to Anki bridge with caching, templating, and watch mode support"
 authors = ["N. V. Lang <@nvlang>"]
