@@ -47,32 +47,28 @@ When you run `ankify notes.typ`, the CLI:
 
 ```mermaid
 flowchart LR
-    subgraph src ["Your Typst document"]
-        direction TB
-        cfg["configure()<br/>document-wide defaults"]
-        noteCalls["note() calls<br/>one per flashcard"]
-    end
+    doc["Typst document:<br/>configure() + note() calls"]
 
     subgraph cli ["ankify CLI"]
         direction TB
-        query["Query the document<br/>configuration + note metadata"]
-        gen["Generate a temp render file<br/>one page per note field"]
-        compile["Compile with Typst<br/>each field as svg, png, or plain"]
-        assemble["Assemble Anki notes<br/>svg inlined, png as media, plain as text"]
-        query --> gen --> compile --> assemble
+        meta["Document metadata:<br/>config + one entry per note"]
+        tmp["Temp render file:<br/>one page per note field"]
+        fields["Rendered fields:<br/>svg, png, or plain text"]
+        notes["Anki notes:<br/>one per note() call"]
+        reqs["AnkiConnect requests:<br/>addNotes / updateNote JSON"]
+        meta -->|generate| tmp
+        tmp -->|typst compile| fields
+        fields -->|assemble| notes
+        notes -->|diff against cache| reqs
     end
 
-    cache[(".ankify/cache.json")]
+    cache[("Sync cache:<br/>.ankify/cache.json")]
+    anki["Anki"]
 
-    src ==> query
-    assemble ==> diff{"Diff against<br/>the cache"}
-    cache --> diff
-    diff -->|new| add["addNotes"]
-    diff -->|changed| update["updateNote"]
-    diff -->|unchanged| skip["skip"]
-    add ==> anki["Anki<br/>via AnkiConnect"]
-    update ==> anki
-    anki -.updates.-> cache
+    doc -->|typst query| meta
+    cache -.-> reqs
+    reqs -->|send| anki
+    anki -.->|record sync| cache
 ```
 
 ## Requirements
