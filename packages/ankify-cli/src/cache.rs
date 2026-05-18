@@ -280,7 +280,7 @@ impl Cache {
 
             // A PNG field's content lives in a rendered media file; everything
             // else (plain text, inline SVG) is carried in the field value.
-            let media_path = if Format::from(value.format.as_str()) == Format::Png {
+            let media_path = if Format::parse(value.format.as_str())? == Format::Png {
                 anki_note.picture.as_ref().and_then(|pictures| {
                     pictures
                         .iter()

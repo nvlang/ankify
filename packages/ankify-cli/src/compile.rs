@@ -43,23 +43,25 @@ impl Format {
         }
     }
 
+    /// Parse a format name, rejecting anything that is not a known format.
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "plain" => Ok(Format::Plain),
+            "svg" => Ok(Format::Svg),
+            "png" => Ok(Format::Png),
+            other => Err(Error::custom(format!(
+                "unknown card format '{}' (expected \"svg\", \"png\", or \"plain\")",
+                other
+            ))),
+        }
+    }
+
     /// Get the typst format argument for this format.
     pub fn typst_arg(&self) -> &'static str {
         match self {
             Format::Plain => panic!("Plain format should not be compiled"),
             Format::Svg => "svg",
             Format::Png => "png",
-        }
-    }
-}
-
-impl From<&str> for Format {
-    fn from(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "plain" => Format::Plain,
-            "svg" => Format::Svg,
-            "png" => Format::Png,
-            _ => Format::Png, // Default to PNG for unknown formats
         }
     }
 }
@@ -85,14 +87,14 @@ impl CompileConfig {
         temp_file: PathBuf,
         output_dir: PathBuf,
         completed_notes_metadata: Vec<CompletedNote>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             temp_file,
             output_dir,
             extra_args: Vec::new(),
-            required_formats: query::determine_required_formats(&completed_notes_metadata),
+            required_formats: query::determine_required_formats(&completed_notes_metadata)?,
             completed_notes_metadata,
-        }
+        })
     }
 
     /// Add extra arguments to the typst compile command.
@@ -270,7 +272,7 @@ async fn associate_files_with_notes(
 
         for field_name in sorted_fields {
             let field_value = &metadata_note.data[field_name];
-            let field_format = Format::from(field_value.format.as_str());
+            let field_format = Format::parse(field_value.format.as_str())?;
             let output_file = file_associations.get(&(note_index, field_name.as_str()));
             match field_format {
                 Format::Plain => {

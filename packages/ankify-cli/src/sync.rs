@@ -528,7 +528,7 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
         temp_file.clone(),
         temp_file.parent().unwrap().join("output"),
         completed_metadata_notes.clone(),
-    )
+    )?
     .with_extra_args(typst_args.clone());
 
     // Create output directory

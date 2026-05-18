@@ -168,13 +168,13 @@ pub fn complete_ankify_notes_metadata(
 }
 
 /// Determine which formats need to be compiled based on (completed) note metadata.
-pub fn determine_required_formats(completed_notes: &[CompletedNote]) -> Vec<Format> {
+pub fn determine_required_formats(completed_notes: &[CompletedNote]) -> Result<Vec<Format>> {
     let mut formats = std::collections::HashSet::new();
 
     for note in completed_notes {
         // Check field-specific formats if data has format specifications
         for value in note.data.values() {
-            let format = Format::from(value.format.as_str());
+            let format = Format::parse(value.format.as_str())?;
             // Skip plain format since it doesn't need compilation
             if format != Format::Plain {
                 formats.insert(format);
@@ -182,7 +182,7 @@ pub fn determine_required_formats(completed_notes: &[CompletedNote]) -> Vec<Form
         }
     }
 
-    formats.into_iter().collect()
+    Ok(formats.into_iter().collect())
 }
 
 /// Apply defaults to configuration fields and convert to CompletedTypstAnkifyConfiguration
