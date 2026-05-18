@@ -143,6 +143,9 @@ ankify notes.typ
 Take notes as usual; each `definition(...)` both typesets the definition and
 produces a flashcard.
 
+A complete, runnable version of this pattern lives in [`demo/`](demo/) — a short
+lecture that compiles to a PDF *and* syncs to Anki.
+
 ### `note()`
 
 | Parameter | Meaning | Default |
@@ -224,6 +227,7 @@ ankify <FILE> [options]
 |---|---|
 | `packages/ankify-typst/` | The `ankify` Typst package (`note`, `configure`). |
 | `packages/ankify-cli/` | The `ankify` CLI and library crate. |
+| `demo/` | A runnable example: a lecture that becomes an Anki deck. |
 
 ## License
 
