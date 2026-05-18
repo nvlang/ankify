@@ -251,10 +251,11 @@
 
 // Configure Ankify.
 //
-// *⚠ Warning:* Note that only the `defaults` parameter is properly stateful, i.e., can be
-// changed throughout the document and will have these changes respected. For
-// all other parameters, only the last value set in the document will be
-// respected.
+// `configure()` may be called more than once. Each call merges into the
+// running configuration: only the parameters you pass take effect, and
+// everything else is left untouched. Dictionary parameters (`defaults`,
+// `cache`, `checks`) merge key by key, so a later call can adjust a single
+// nested setting without resetting its siblings.
 //
 // = Examples
 //
@@ -373,30 +374,13 @@
 //
 // -> none
 #let configure(
-  ankiconnect-url: "http://localhost:8765",
-  verbose: false,
+  ankiconnect-url: none,
+  verbose: none,
   scale: none,
-  defaults: (
-    model: "Basic",
-    deck: "Default",
-    format: "png",
-    tags: (),
-    other: none,
-    render: (note: none, field: none, field-content: none) => { field-content },
-  ),
+  defaults: none,
   setup: none,
-  cache: (
-    enabled: true,
-    custom-file: none,
-  ),
-  checks: (
-    typst: true,
-    ankiconnect: (
-      model: true,
-      deck: true,
-      tags: true,
-    ),
-  ),
+  cache: none,
+  checks: none,
 ) = {
   __ankify-configuration.update(config => {
     let new-config = (
