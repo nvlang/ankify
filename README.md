@@ -200,8 +200,11 @@ cards look too small, lower it towards `1.0` if they look too big. If you omit
 
 Run `ankify notes.typ` again whenever you add or edit notes. Thanks to the
 cache, unchanged notes are skipped, edited notes are updated, and new notes are
-added. (Changing a note's *deck* is not migrated — AnkiConnect cannot move an
-existing card between decks.)
+added. Renaming a note's label is recognised as a rename when its content is
+otherwise unchanged, so the existing card is updated in place rather than
+duplicated; a label that disappears from the document is reported as a warning,
+its Anki note left untouched. (Changing a note's *deck* is not migrated —
+AnkiConnect cannot move an existing card between decks.)
 
 ## CLI options
 

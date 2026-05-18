@@ -221,6 +221,11 @@ impl Cache {
         self.entries.insert(label, entry);
     }
 
+    /// Remove and return the cache entry for the given label, if present.
+    pub fn remove(&mut self, label: &str) -> Option<CacheEntry> {
+        self.entries.remove(label)
+    }
+
     /// Check if the cache contains an entry for the given label.
     pub fn contains(&self, label: &str) -> bool {
         self.entries.contains_key(label)
