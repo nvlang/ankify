@@ -90,12 +90,68 @@ impl AnkiConnectMock {
     }
 }
 
+/// Strip HTML/XML tags, keeping only the text between them — the view Anki's
+/// empty-note check has of a field.
+fn strip_html(s: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Whether Anki would reject a submitted note as empty: it attaches no media
+/// and every field strips to whitespace. (Anki itself checks only the first
+/// field; checking them all is enough to catch an inline SVG — vector glyphs
+/// with no text — that strips to nothing.)
+fn note_is_empty(note: &Value) -> bool {
+    let has_media = ["picture", "audio", "video"].iter().any(|&key| {
+        note.get(key)
+            .and_then(Value::as_array)
+            .is_some_and(|items| !items.is_empty())
+    });
+    if has_media {
+        return false;
+    }
+    note.get("fields")
+        .and_then(Value::as_object)
+        .is_none_or(|fields| {
+            fields
+                .values()
+                .all(|v| v.as_str().is_none_or(|s| strip_html(s).trim().is_empty()))
+        })
+}
+
 impl Respond for AnkiConnectMock {
     fn respond(&self, request: &Request) -> ResponseTemplate {
         let body: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
         self.requests.lock().unwrap().push(body.clone());
 
-        let result = match body.get("action").and_then(Value::as_str).unwrap_or("") {
+        let action = body.get("action").and_then(Value::as_str).unwrap_or("");
+
+        // Real Anki refuses an empty note; a real `addNotes` fails the whole
+        // request when any submitted note is empty. Mirror that here so an
+        // inline SVG that strips to nothing cannot regress past the tests.
+        if action == "addNotes" {
+            let empty = body
+                .pointer("/params/notes")
+                .and_then(Value::as_array)
+                .map_or(0, |notes| notes.iter().filter(|n| note_is_empty(n)).count());
+            if empty > 0 {
+                return ResponseTemplate::new(200).set_body_json(json!({
+                    "result": Value::Null,
+                    "error": format!("cannot create note because it is empty (×{empty})"),
+                }));
+            }
+        }
+
+        let result = match action {
             "version" => json!(6),
             "createDeck" => json!(self.alloc_id()),
             "addNotes" => {
@@ -242,6 +298,10 @@ async fn svg_notes_inline_themable_markup() {
     for field in ["Front", "Back"] {
         let value = note["fields"][field].as_str().expect("field value");
         assert!(value.contains("<svg"), "{field} should hold an inline SVG");
+        assert!(
+            value.contains("<desc>"),
+            "{field}'s SVG needs a <desc> so Anki does not reject the note as empty",
+        );
         assert!(
             value.contains("currentColor"),
             "{field}'s foreground should be themable (currentColor)",

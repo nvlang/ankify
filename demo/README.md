@@ -29,10 +29,11 @@ You need four things; all commands are run from the **repository root**.
 
 2. **The Typst CLI** (`typst`) on your `PATH` — see [typst.app](https://typst.app).
 
-3. **The `ankify` CLI:**
+3. **The `ankify` CLI.** `--force` ensures a re-run picks up the current code —
+   without it, `cargo install` skips reinstalling the already-installed version:
 
    ```sh
-   cargo install --path packages/ankify-cli
+   cargo install --path packages/ankify-cli --force
    ```
 
 4. **The `ankify` Typst package**, installed locally so that
