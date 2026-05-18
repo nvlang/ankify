@@ -40,3 +40,12 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --verbose
+
+  typst-check:
+    name: Typst package check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Typst package
+        run: docker run --rm -v "${{ github.workspace }}/packages/ankify-typst:/data" ghcr.io/typst/package-check:0.4.5 check
