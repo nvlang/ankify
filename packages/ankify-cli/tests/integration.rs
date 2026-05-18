@@ -529,3 +529,38 @@ async fn document_with_no_notes_is_a_no_op() {
         (0, 0, 0),
     );
 }
+
+/// An empty field must not shift the field-to-image mapping: each non-empty
+/// field's image must still be the correct one even when a sibling field
+/// renders to nothing.
+#[tokio::test]
+async fn an_empty_field_does_not_shift_the_mapping() {
+    let project = TestProject::new(
+        r#"#import "@local/ankify:0.1.0": note, configure
+#configure(scale: 1.0, defaults: (deck: "Empty Field"))
+#note("ef", format: "svg", data: (
+  A: box(width: 60pt, height: 20pt, fill: black),
+  B: [],
+  C: box(width: 180pt, height: 20pt, fill: black),
+))
+"#,
+    );
+    let outcome = project.sync().await;
+    outcome.result.expect("sync should succeed");
+
+    let note = &add_notes(&outcome.requests)["params"]["notes"][0];
+    // 5 mm of page margin on each side of the content box.
+    let margin_pt = 2.0 * 5.0 / 25.4 * 72.0;
+    for (field, box_width) in [("A", 60.0), ("C", 180.0)] {
+        let svg = note["fields"][field]
+            .as_str()
+            .expect("inline svg field value");
+        let actual = svg_width_pt(svg);
+        let want = box_width + margin_pt;
+        assert!(
+            (actual - want).abs() < 3.0,
+            "field {field}: image is {actual:.1}pt wide, expected ~{want:.1}pt \
+             — the empty sibling field B shifted the field-to-image mapping",
+        );
+    }
+}
