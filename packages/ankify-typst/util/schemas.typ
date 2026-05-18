@@ -62,12 +62,16 @@
           )
         }
       }
+      assert(
+        "value" in value,
+        message: "A field's (value, format) dictionary must contain a \"value\" key",
+      )
     }
   }
 }
 
 #let note-schema = z.dictionary((
-  label: z.string(optional: true, assertions: (z.assert.length.min(1),)),
+  label: z.string(assertions: (z.assert.length.min(1),)),
   deck: z.string(default: default-configuration.defaults.deck, assertions: (z.assert.length.min(1),)),
   model: z.string(default: default-configuration.defaults.model, assertions: (z.assert.length.min(1),)),
   format: z.choice(("svg", "png", "plain"), default: default-configuration.defaults.format),

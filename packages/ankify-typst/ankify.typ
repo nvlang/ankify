@@ -163,6 +163,18 @@
       note-object,
     )
 
+    // Structural invariants — always enforced, even when `checks.typst` is
+    // disabled: a card is meaningless without a non-empty label and at least
+    // one data field.
+    assert(
+      type(note-object.label) == str and note-object.label.len() > 0,
+      message: "note() requires a non-empty string label",
+    )
+    assert(
+      type(note-object.data) == dictionary and note-object.data.len() > 0,
+      message: "note '" + note-object.label + "' requires a non-empty `data` dictionary",
+    )
+
     let checks = __ankify-configuration.get().checks
 
     if (checks.typst) {
