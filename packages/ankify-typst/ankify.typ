@@ -394,6 +394,10 @@
 
 /// Helper function to create a cloze deletion card.
 ///
+/// The card is always rendered as plain text, whatever the configured default
+/// format: Anki needs the `{{c1::..}}` markers verbatim to turn them into
+/// deletions, so rendering the text to an image would break the card.
+///
 /// # Arguments
 ///
 /// - `label`: Unique identifier for the card
@@ -413,5 +417,6 @@
     data: (Text: text),
     deck: deck,
     tags: tags,
+    format: "plain",
   )
 }

@@ -12,11 +12,12 @@ written in one place and can never drift apart.
 
 - **The helper pattern** — `definition()` and `theorem()` helpers that typeset
   an item *and* register a card in a single call.
-- **`configure()`** — document-wide defaults (deck, tags, render format,
-  `scale`), and that it can be called more than once to adjust them.
+- **`configure()`** — document-wide defaults: deck, tags, render format, and
+  `scale`.
 - **`note()`** and its shorthands **`basic()`** and **`cloze()`**.
 - **Render formats** — theme-aware `svg` cards, so the mathematics survives and
-  follows Anki's light/dark mode, plus `plain` text for the quick-review cards.
+  follows Anki's light/dark mode; the cloze card is sent as `plain` text, which
+  Anki needs in order to read the `{{c1::..}}` markers.
 - **Per-note decks and tags** — the theorems are routed to a
   `Real Analysis::Theorems` sub-deck with an extra tag.
 

@@ -155,13 +155,10 @@ The next two results instead manufacture a limit out of structure alone.
 
 = Quick review
 
-`note()` has two shorthands. `basic(label, front, back)` builds a plain
-front-and-back card; `cloze(label, text)` builds a fill-in-the-blank card from
-`{{c1::..}}` markers. A cloze card must reach Anki as text, so the default
-format is switched to `plain` first --- `configure()` may be called repeatedly,
-and each call merges into the running settings.
-
-#configure(defaults: (format: "plain"))
+`note()` has two shorthands. `basic(label, front, back)` builds a simple
+front-and-back card, and `cloze(label, text)` builds a fill-in-the-blank card
+from `{{c1::..}}` markers --- always as plain text, so Anki receives the markers
+verbatim and can turn them into blanks.
 
 #basic(
   "review-limit-uniqueness",
