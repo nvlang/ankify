@@ -752,7 +752,8 @@ async fn execute_requests(
 
                 // Update cache for successfully added notes
                 if let Some(note_ids) = note_ids {
-                    update_cache_with_added_notes(cache, &note_ids, processed_notes).await?;
+                    update_cache_with_added_notes(cache, &note_ids, processed_notes, result)
+                        .await?;
                 }
             }
             RequestOrRequestList::List(nested_list) => {
@@ -779,7 +780,7 @@ async fn execute_single_request(
     http_client: &Client,
     _cache: &mut Cache,
     result: &mut SyncResult,
-) -> Result<Option<Vec<u64>>> {
+) -> Result<Option<Vec<Option<u64>>>> {
     let response = http_client
         .post(anki_client.url())
         .json(request)
@@ -818,12 +819,13 @@ async fn execute_single_request(
                 result.decks_created += 1;
             }
             "addNotes" => {
-                // The response should contain an array of note IDs
+                // AnkiConnect's `addNotes` returns one slot per submitted note:
+                // the new note's ID, or `null` for a note it could not add. The
+                // `null`s must be preserved so every ID stays aligned with the
+                // note it belongs to.
                 if let Some(note_ids) = response_json.get("result").and_then(|r| r.as_array()) {
-                    result.notes_added += note_ids.len();
-
-                    // Extract note IDs for cache updating
-                    let ids: Vec<u64> = note_ids.iter().filter_map(|v| v.as_u64()).collect();
+                    let ids: Vec<Option<u64>> = note_ids.iter().map(|v| v.as_u64()).collect();
+                    result.notes_added += ids.iter().flatten().count();
                     returned_note_ids = Some(ids);
                 }
             }
@@ -839,30 +841,56 @@ async fn execute_single_request(
     Ok(returned_note_ids)
 }
 
-/// Update cache with newly added notes.
+/// Update the cache with the IDs `addNotes` returned for newly added notes.
+///
+/// `note_ids` is positionally aligned with the notes submitted in the
+/// `addNotes` request: a `None` entry marks a note AnkiConnect declined to add,
+/// which is skipped (and surfaced as a warning) rather than cached against a
+/// neighbouring note's ID.
 async fn update_cache_with_added_notes(
     cache: &mut Cache,
-    note_ids: &[u64],
+    note_ids: &[Option<u64>],
     processed_notes: &[ProcessedNote],
+    result: &mut SyncResult,
 ) -> Result<()> {
-    // Find notes that were actually added (not already in cache)
+    // The notes submitted in the `addNotes` request, in submission order — the
+    // same filter `create_request_list` used to build that request.
     let new_notes: Vec<_> = processed_notes
         .iter()
         .filter(|note| !cache.contains(&note.metadata.label))
         .collect();
 
-    // Match note IDs with the corresponding notes
-    for (i, &note_id) in note_ids.iter().enumerate() {
-        if let Some(processed_note) = new_notes.get(i) {
-            // Create cache entry for this note
-            let note_id = NoteId(note_id);
-            cache
-                .update_from_note(
-                    &processed_note.metadata,
-                    note_id,
-                    processed_note.field_hashes.clone(),
-                )
-                .await?;
+    if note_ids.len() != new_notes.len() {
+        result.warnings.push(format!(
+            "AnkiConnect returned {} note IDs for {} submitted notes; \
+             some notes may not have been cached",
+            note_ids.len(),
+            new_notes.len()
+        ));
+    }
+
+    for (i, maybe_id) in note_ids.iter().enumerate() {
+        let Some(processed_note) = new_notes.get(i) else {
+            continue;
+        };
+        match maybe_id {
+            Some(id) => {
+                cache
+                    .update_from_note(
+                        &processed_note.metadata,
+                        NoteId(*id),
+                        processed_note.field_hashes.clone(),
+                    )
+                    .await?;
+            }
+            None => {
+                let msg = format!(
+                    "Anki could not add note '{}' — skipped",
+                    processed_note.metadata.label
+                );
+                warn!("{}", msg);
+                result.warnings.push(msg);
+            }
         }
     }
 
