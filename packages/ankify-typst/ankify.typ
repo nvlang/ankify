@@ -181,12 +181,19 @@
       note-object = z.parse(note-object, note-schema)
     }
 
-    // Store as metadata for CLI extraction - filter content only in the data field
-    let filtered-note = note-object
-    if (note-object.data != none) {
-      filtered-note.data = filter-content(note-object.data)
-    }
-    [#metadata(filtered-note) <ankify-note>]
+    // Emit the note as document metadata for the CLI to query. `render` is
+    // dropped — it is a function, so it would serialise to a useless
+    // placeholder; the renderer reads it from document state instead.
+    let metadata-note = (
+      label: note-object.label,
+      data: filter-content(note-object.data),
+      model: note-object.model,
+      deck: note-object.deck,
+      tags: note-object.tags,
+      other: note-object.other,
+      format: note-object.format,
+    )
+    [#metadata(metadata-note) <ankify-note>]
 
     // Return both the update (which places the state change) and the content
     [
