@@ -286,7 +286,8 @@ async fn associate_files_with_notes(
                     // SVG is inlined directly into the field, recoloured so it
                     // follows the Anki card's (themed) text colour. Being part
                     // of the card's DOM, an inline SVG can use `currentColor`;
-                    // an `<img>`-embedded SVG could not. No media file needed.
+                    // an `<img>`-embedded SVG could not. `inline_svg` also gives
+                    // it a `<desc>` so Anki does not read the note as empty.
                     match output_file.and_then(|files| files.get(&Format::Svg)) {
                         Some(svg_path) => {
                             let svg = fs::read_to_string(svg_path).map_err(|e| {
@@ -298,7 +299,11 @@ async fn associate_files_with_notes(
                             })?;
                             fields.insert(
                                 Field::new(field_name.clone()),
-                                FieldValue::new(Some(theme_svg(&svg))),
+                                FieldValue::new(Some(inline_svg(
+                                    &svg,
+                                    &metadata_note.label,
+                                    field_name,
+                                ))),
                             );
                         }
                         None => {
@@ -412,6 +417,42 @@ fn create_file_associations<'a>(
 fn theme_svg(svg: &str) -> String {
     svg.replace("fill=\"#000000\"", "fill=\"currentColor\"")
         .replace("stroke=\"#000000\"", "stroke=\"currentColor\"")
+}
+
+/// Escape a string for use as XML text content.
+fn escape_xml(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Prepare a Typst-rendered SVG to be inlined into an Anki field: theme it
+/// (see [`theme_svg`]), then give it a `<desc>`.
+///
+/// Typst renders text as vector glyph paths, so an inline `<svg>` carries no
+/// text and no media reference. Anki's empty-note check strips HTML and would
+/// see nothing — rejecting any all-SVG note as "empty" — while its duplicate
+/// check would see every SVG note alike. The `<desc>`, holding the note label
+/// and field name, survives the strip: the field reads as non-empty and
+/// unique. `<desc>` is SVG metadata, never drawn, so the card is unchanged.
+fn inline_svg(svg: &str, label: &str, field: &str) -> String {
+    let themed = theme_svg(svg);
+    let desc = format!("<desc>{}: {}</desc>", escape_xml(label), escape_xml(field));
+    // Insert the <desc> as the first child, just after the opening <svg> tag.
+    match themed
+        .find("<svg")
+        .and_then(|start| themed[start..].find('>').map(|end| start + end + 1))
+    {
+        Some(at) => {
+            let mut out = String::with_capacity(themed.len() + desc.len());
+            out.push_str(&themed[..at]);
+            out.push_str(&desc);
+            out.push_str(&themed[at..]);
+            out
+        }
+        // No recognisable <svg> tag; leave the content as-is.
+        None => themed,
+    }
 }
 
 /// Reduce a label or field name to characters safe for a media filename, so a
@@ -546,5 +587,24 @@ mod tests {
     fn theme_svg_leaves_non_black_colours_untouched() {
         let svg = r##"<path fill="#0074d9"/>"##;
         assert_eq!(theme_svg(svg), svg);
+    }
+
+    #[test]
+    fn inline_svg_injects_a_desc_as_the_first_child() {
+        let svg = r#"<svg class="typst-doc" width="10pt"><path d="M0 0"/></svg>"#;
+        let out = inline_svg(svg, "def-limit", "Front");
+        // The <desc> follows the opening <svg> tag and carries label + field,
+        // so the field survives Anki's empty-note check and is unique per note.
+        assert!(
+            out.starts_with(r#"<svg class="typst-doc" width="10pt"><desc>def-limit: Front</desc>"#)
+        );
+        // The original graphic is preserved.
+        assert!(out.contains(r#"<path d="M0 0"/>"#));
+    }
+
+    #[test]
+    fn inline_svg_escapes_xml_in_the_desc() {
+        let out = inline_svg(r#"<svg width="1pt"><path/></svg>"#, "a & b", "F<x>");
+        assert!(out.contains("<desc>a &amp; b: F&lt;x&gt;</desc>"));
     }
 }
