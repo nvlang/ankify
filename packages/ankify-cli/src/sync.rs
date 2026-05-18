@@ -492,6 +492,9 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
         if ctx.config.cli_mode {
             info!("No notes found in {}", ctx.config.source_file.display());
         }
+        // The document has no notes, but the cache may still hold entries from
+        // an earlier sync — report them all as orphans before bailing out.
+        report_orphans(&ctx.cache, &HashSet::new(), result);
         return Ok(());
     }
 
@@ -844,18 +847,14 @@ fn detect_renames_and_report_orphans(
         .map(|(index, note)| (index, fingerprint(&note.field_hashes)))
         .collect();
 
-    let renames = match_renames(&fresh, &orphans);
-    let mut renamed_orphans: HashSet<&str> = HashSet::new();
-
-    for (old_label, fresh_index) in &renames {
-        let Some(mut entry) = cache.remove(old_label) else {
+    for (old_label, fresh_index) in match_renames(&fresh, &orphans) {
+        let Some(mut entry) = cache.remove(&old_label) else {
             continue;
         };
-        let new_label = processed_notes[*fresh_index].metadata.label.clone();
+        let new_label = processed_notes[fresh_index].metadata.label.clone();
         entry.label = Label::new(new_label.clone());
         cache.insert(new_label.clone(), entry);
-        processed_notes[*fresh_index].is_new = false;
-        renamed_orphans.insert(old_label.as_str());
+        processed_notes[fresh_index].is_new = false;
 
         if cli_mode {
             info!(
@@ -865,10 +864,25 @@ fn detect_renames_and_report_orphans(
         }
     }
 
-    for (label, _) in &orphans {
-        if renamed_orphans.contains(label.as_str()) {
-            continue;
-        }
+    // Rename detection has moved relabelled entries onto their new, in-document
+    // labels; whatever is still keyed by an absent label is a genuine orphan.
+    report_orphans(cache, &document_labels, result);
+}
+
+/// Report every cache entry whose label is absent from the document: the note
+/// is gone — deleted, or renamed alongside an edit — and its Anki note is left
+/// untouched. Used both after rename detection and when the document has no
+/// notes at all.
+fn report_orphans(cache: &Cache, document_labels: &HashSet<String>, result: &mut SyncResult) {
+    let mut orphan_labels: Vec<&str> = cache
+        .entries()
+        .keys()
+        .map(String::as_str)
+        .filter(|&label| !document_labels.contains(label))
+        .collect();
+    orphan_labels.sort_unstable();
+
+    for label in orphan_labels {
         let message = format!(
             "cached note '{}' is no longer in the document \
              (deleted, or renamed alongside an edit); \

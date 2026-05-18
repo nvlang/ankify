@@ -522,6 +522,45 @@ async fn a_removed_note_is_reported_as_an_orphan() {
     );
 }
 
+/// Even when every note is removed from the document, the cache entries it used
+/// to have are still reported as orphans rather than vanishing silently.
+#[tokio::test]
+async fn emptying_the_document_reports_every_orphan() {
+    let project = TestProject::new(
+        r#"#import "@local/ankify:0.1.0": note
+#note("first", format: "plain", data: (Front: "Q1", Back: "A1"))
+#note("second", format: "plain", data: (Front: "Q2", Back: "A2"))
+"#,
+    );
+    let first = project.sync().await.result.expect("sync 1");
+    assert_eq!(first.notes_added, 2);
+
+    // Remove every note from the document.
+    project.write(
+        r#"#import "@local/ankify:0.1.0": note
+
+= A document that no longer has any flashcards
+"#,
+    );
+    let second = project.sync().await.result.expect("sync 2");
+
+    assert_eq!(
+        (
+            second.notes_added,
+            second.notes_updated,
+            second.notes_unchanged,
+        ),
+        (0, 0, 0),
+    );
+    for orphan in ["'first'", "'second'"] {
+        assert!(
+            second.warnings.iter().any(|w| w.contains(orphan)),
+            "an emptied document should still report {orphan}: {:?}",
+            second.warnings,
+        );
+    }
+}
+
 #[tokio::test]
 async fn document_without_configure_does_not_crash() {
     let project = TestProject::new(
