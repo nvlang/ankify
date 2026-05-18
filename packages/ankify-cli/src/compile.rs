@@ -414,6 +414,20 @@ fn theme_svg(svg: &str) -> String {
         .replace("stroke=\"#000000\"", "stroke=\"currentColor\"")
 }
 
+/// Reduce a label or field name to characters safe for a media filename, so a
+/// note label cannot smuggle path separators into Anki's media directory.
+fn sanitize_filename_part(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 /// Create a media file from an output file.
 pub fn create_media_file(
     output_file: &HashMap<Format, PathBuf>,
@@ -436,8 +450,8 @@ pub fn create_media_file(
     Ok(MediaFile {
         filename: format!(
             "{}@@{}@@{}.{}",
-            note_label,
-            field_name,
+            sanitize_filename_part(note_label),
+            sanitize_filename_part(field_name),
             timestamp,
             format.extension()
         ),

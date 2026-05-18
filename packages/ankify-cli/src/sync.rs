@@ -494,8 +494,7 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
     ctx.temp_files.push(temp_file.clone());
 
     // Step 3: Query Typst for the notes.
-    let metadata_notes =
-        query_ankify_notes(&ctx.config.source_file, Some(&typst_arg_refs)).await?;
+    let metadata_notes = query_ankify_notes(&ctx.config.source_file, Some(&typst_arg_refs)).await?;
 
     if metadata_notes.is_empty() {
         if ctx.config.cli_mode {
@@ -685,9 +684,10 @@ async fn run_ankiconnect_checks(
             .filter(|d| !decks.contains(d))
             .collect();
         for deck in missing {
-            result
-                .warnings
-                .push(format!("deck '{}' does not exist yet — it will be created", deck));
+            result.warnings.push(format!(
+                "deck '{}' does not exist yet — it will be created",
+                deck
+            ));
         }
     }
 
@@ -701,9 +701,10 @@ async fn run_ankiconnect_checks(
             .filter(|t| !tags.contains(t))
             .collect();
         for tag in missing {
-            result
-                .warnings
-                .push(format!("tag '{}' does not exist yet — it will be created", tag));
+            result.warnings.push(format!(
+                "tag '{}' does not exist yet — it will be created",
+                tag
+            ));
         }
     }
 

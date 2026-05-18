@@ -41,6 +41,11 @@ jobs:
       - name: Test
         run: cargo test --workspace --verbose
 
+      # The release profile sets panic = "abort" and LTO; build it once so a
+      # release-only breakage is caught before publishing.
+      - name: Release build
+        run: cargo build --release --workspace
+
   typst-check:
     name: Typst package check
     runs-on: ubuntu-latest
