@@ -41,6 +41,24 @@ When you run `ankify notes.typ`, the CLI:
 4. records what it pushed in a cache (`.ankify/cache.json`), so the next run
    only syncs notes that were added or changed.
 
+```mermaid
+flowchart TD
+    doc["Typst document<br/>using note() and configure()"]
+    doc --> cli(["ankify CLI"])
+    cli --> query["Query the document<br/>for notes and configuration"]
+    cli --> render["Render each note field with Typst<br/>as svg, png, or plain text"]
+    cache[(".ankify/cache.json")]
+    query --> diff{"Diff against<br/>the cache"}
+    render --> diff
+    cache --> diff
+    diff -->|new| add["addNotes"]
+    diff -->|changed| update["updateNote"]
+    diff -->|unchanged| skip["skip"]
+    add --> anki["Anki<br/>via the AnkiConnect add-on"]
+    update --> anki
+    anki --> cache
+```
+
 ## Requirements
 
 - **Anki**, running, with the **AnkiConnect** add-on installed.
