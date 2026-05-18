@@ -495,3 +495,42 @@ pub fn cleanup_output_files(dir: &Path) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_parse_accepts_known_formats_case_insensitively() {
+        assert_eq!(Format::parse("svg").unwrap(), Format::Svg);
+        assert_eq!(Format::parse("PNG").unwrap(), Format::Png);
+        assert_eq!(Format::parse("Plain").unwrap(), Format::Plain);
+    }
+
+    #[test]
+    fn format_parse_rejects_unknown_formats() {
+        assert!(Format::parse("jpeg").is_err());
+        assert!(Format::parse("").is_err());
+    }
+
+    #[test]
+    fn format_extension_matches_the_format() {
+        assert_eq!(Format::Svg.extension(), "svg");
+        assert_eq!(Format::Png.extension(), "png");
+        assert_eq!(Format::Plain.extension(), "txt");
+    }
+
+    #[test]
+    fn theme_svg_recolours_black_to_currentcolor() {
+        let themed = theme_svg(r##"<path fill="#000000"/><path stroke="#000000"/>"##);
+        assert!(themed.contains(r#"fill="currentColor""#));
+        assert!(themed.contains(r#"stroke="currentColor""#));
+        assert!(!themed.contains("#000000"));
+    }
+
+    #[test]
+    fn theme_svg_leaves_non_black_colours_untouched() {
+        let svg = r##"<path fill="#0074d9"/>"##;
+        assert_eq!(theme_svg(svg), svg);
+    }
+}

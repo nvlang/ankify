@@ -338,3 +338,23 @@ impl Default for Cache {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sha256_is_deterministic() {
+        assert_eq!(Sha256::from_text("hello"), Sha256::from_text("hello"));
+    }
+
+    #[test]
+    fn sha256_differs_for_different_input() {
+        assert_ne!(Sha256::from_text("a"), Sha256::from_text("b"));
+    }
+
+    #[test]
+    fn sha256_from_text_matches_from_bytes() {
+        assert_eq!(Sha256::from_text("x"), Sha256::from_bytes(b"x"));
+    }
+}
