@@ -21,7 +21,7 @@ async fn main() {
 
     let matches = Command::new("ankify")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Advanced Typst to Anki bridge with caching, templating, and watch mode support")
+        .about(env!("CARGO_PKG_DESCRIPTION"))
         .arg(
             Arg::new("file")
                 .help("The Typst source file to process")

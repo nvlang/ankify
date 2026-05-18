@@ -49,10 +49,6 @@ pub enum Error {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
-    /// Watch error (alias for compatibility)
-    #[error("Watch error: {0}")]
-    WatchError(String),
-
     /// Render error (alias for compatibility)
     #[error("Render error: {0}")]
     RenderError(String),

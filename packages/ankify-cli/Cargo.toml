@@ -2,7 +2,7 @@
 name = "ankify"
 version = "0.1.0"
 edition = "2021"
-description = "Advanced Typst to Anki bridge with caching, templating, and watch mode support"
+description = "Sync Anki flashcards from your Typst documents."
 authors = ["N. V. Lang <@nvlang>"]
 license = "MIT"
 readme = "README.md"
