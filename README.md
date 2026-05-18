@@ -46,21 +46,33 @@ When you run `ankify notes.typ`, the CLI:
    only syncs notes that were added or changed.
 
 ```mermaid
-flowchart TD
-    doc["Typst document<br/>using note() and configure()"]
-    doc --> cli(["ankify CLI"])
-    cli --> query["Query the document<br/>for notes and configuration"]
-    cli --> render["Render each note field with Typst<br/>as svg, png, or plain text"]
+flowchart LR
+    subgraph src ["Your Typst document"]
+        direction TB
+        cfg["configure()<br/>document-wide defaults"]
+        noteCalls["note() calls<br/>one per flashcard"]
+    end
+
+    subgraph cli ["ankify CLI"]
+        direction TB
+        query["Query the document<br/>configuration + note metadata"]
+        gen["Generate a temp render file<br/>one page per note field"]
+        compile["Compile with Typst<br/>each field as svg, png, or plain"]
+        assemble["Assemble Anki notes<br/>svg inlined, png as media, plain as text"]
+        query --> gen --> compile --> assemble
+    end
+
     cache[(".ankify/cache.json")]
-    query --> diff{"Diff against<br/>the cache"}
-    render --> diff
+
+    src ==> query
+    assemble ==> diff{"Diff against<br/>the cache"}
     cache --> diff
     diff -->|new| add["addNotes"]
     diff -->|changed| update["updateNote"]
     diff -->|unchanged| skip["skip"]
-    add --> anki["Anki<br/>via the AnkiConnect add-on"]
-    update --> anki
-    anki --> cache
+    add ==> anki["Anki<br/>via AnkiConnect"]
+    update ==> anki
+    anki -.updates.-> cache
 ```
 
 ## Requirements
