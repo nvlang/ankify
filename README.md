@@ -42,7 +42,7 @@ When you run `ankify notes.typ`, the CLI:
    only syncs notes that were added or changed.
 
 ```mermaid
-flowchart LR
+flowchart TD
     doc["Typst document:<br/>configure() + note() calls"]
 
     subgraph cli ["ankify CLI"]
