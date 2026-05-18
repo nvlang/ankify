@@ -51,11 +51,6 @@ use futures;
 pub struct Sha256(String);
 
 impl Sha256 {
-    /// Create a new SHA-256 hash from a hexadecimal string.
-    pub fn new(hash: String) -> Self {
-        Self(hash)
-    }
-
     /// Get the hash as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -95,12 +90,6 @@ impl From<String> for Label {
     }
 }
 
-impl From<&str> for Label {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
-    }
-}
-
 /// A cache entry representing the last known state of a note in Anki.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CacheEntry {
@@ -130,30 +119,6 @@ impl CacheEntry {
     /// Get the hash for a specific field, if it exists.
     pub fn get_field_hash(&self, field: &Field) -> Option<&Sha256> {
         self.hash.get(field).and_then(|opt| opt.as_ref())
-    }
-
-    /// Set the hash for a specific field.
-    pub fn set_field_hash(&mut self, field: Field, hash: Option<Sha256>) {
-        self.hash.insert(field, hash);
-    }
-
-    /// Check if this entry has the same content hashes as the provided field hashes.
-    pub fn compare_hashes(
-        &self,
-        field_hashes: &HashMap<Field, Option<Sha256>>,
-    ) -> HashMap<Field, bool> {
-        field_hashes
-            .iter()
-            .map(|(field, hash)| {
-                let cached_hash = self.get_field_hash(field);
-                let is_equal = match (cached_hash, hash) {
-                    (Some(cached), Some(new)) => cached == new,
-                    (None, None) => true,
-                    _ => false,
-                };
-                (field.clone(), is_equal)
-            })
-            .collect()
     }
 }
 
@@ -251,19 +216,9 @@ impl Cache {
         self.entries.get(label)
     }
 
-    /// Get a mutable reference to a cache entry by label.
-    pub fn get_mut(&mut self, label: &str) -> Option<&mut CacheEntry> {
-        self.entries.get_mut(label)
-    }
-
     /// Insert or update a cache entry.
     pub fn insert(&mut self, label: String, entry: CacheEntry) {
         self.entries.insert(label, entry);
-    }
-
-    /// Remove a cache entry by label.
-    pub fn remove(&mut self, label: &str) -> Option<CacheEntry> {
-        self.entries.remove(label)
     }
 
     /// Check if the cache contains an entry for the given label.
@@ -271,29 +226,9 @@ impl Cache {
         self.entries.contains_key(label)
     }
 
-    /// Get all labels in the cache.
-    pub fn labels(&self) -> Vec<&String> {
-        self.entries.keys().collect()
-    }
-
     /// Get all entries in the cache.
     pub fn entries(&self) -> &HashMap<String, CacheEntry> {
         &self.entries
-    }
-
-    /// Get the number of entries in the cache.
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    /// Check if the cache is empty.
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// Clear all entries from the cache.
-    pub fn clear(&mut self) {
-        self.entries.clear();
     }
 
     /// Update the cache with a note from the metadata module.

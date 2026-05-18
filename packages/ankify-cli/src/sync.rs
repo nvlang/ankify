@@ -526,7 +526,6 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
     // Step 3 continued: Compile the temporary file to generate output files
     let compile_config = CompileConfig::new(
         temp_file.clone(),
-        ctx.config.source_file.clone(),
         temp_file.parent().unwrap().join("output"),
         completed_metadata_notes.clone(),
     )

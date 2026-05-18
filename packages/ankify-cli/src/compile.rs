@@ -69,8 +69,6 @@ impl From<&str> for Format {
 pub struct CompileConfig {
     /// The temporary Typst file to compile.
     pub temp_file: PathBuf,
-    /// The source Typst file (for root directory calculation).
-    pub source_file: PathBuf,
     /// Output directory for compiled files.
     pub output_dir: PathBuf,
     /// Additional arguments to pass to typst compile.
@@ -85,13 +83,11 @@ impl CompileConfig {
     /// Create a new compile configuration.
     pub fn new(
         temp_file: PathBuf,
-        source_file: PathBuf,
         output_dir: PathBuf,
         completed_notes_metadata: Vec<CompletedNote>,
     ) -> Self {
         Self {
             temp_file,
-            source_file,
             output_dir,
             extra_args: Vec::new(),
             required_formats: query::determine_required_formats(&completed_notes_metadata),
@@ -113,14 +109,6 @@ pub struct CompileResult {
     pub notes: Vec<AnkiNote>,
     /// Paths to generated output files.
     pub output_files: HashMap<Format, Vec<PathBuf>>,
-}
-
-#[derive(Debug)]
-pub struct FilesWithFormat {
-    /// The format of the files.
-    pub format: Format,
-    /// The list of output files generated for this format.
-    pub files: Vec<PathBuf>,
 }
 
 /// Compile a temporary Typst file and generate Anki notes.
