@@ -445,6 +445,122 @@ async fn incremental_sync_adds_updates_and_skips() {
     );
 }
 
+/// Renaming a note's label, with its content untouched, is recognised as the
+/// same card: the existing Anki note is kept, not a duplicate added.
+#[tokio::test]
+async fn renaming_a_label_updates_in_place_without_duplicating() {
+    let project = TestProject::new(
+        r#"#import "@local/ankify:0.1.0": note
+#note("old-label", format: "plain", data: (Front: "Q", Back: "A"))
+"#,
+    );
+    let first = project.sync().await.result.expect("sync 1");
+    assert_eq!(first.notes_added, 1);
+
+    // Rename the label; the content is identical.
+    project.write(
+        r#"#import "@local/ankify:0.1.0": note
+#note("new-label", format: "plain", data: (Front: "Q", Back: "A"))
+"#,
+    );
+    let outcome = project.sync().await;
+    let second = outcome.result.expect("sync 2");
+
+    assert_eq!(
+        (
+            second.notes_added,
+            second.notes_updated,
+            second.notes_unchanged,
+        ),
+        (0, 0, 1),
+        "a pure rename should add and update nothing",
+    );
+    assert!(
+        second.warnings.is_empty(),
+        "a recognised rename should not be reported as an orphan: {:?}",
+        second.warnings,
+    );
+    assert!(
+        !outcome.requests.iter().any(|r| r["action"] == "addNotes"),
+        "a renamed note must not be re-added to Anki",
+    );
+}
+
+/// A note removed from the document is reported as an orphan; its Anki note is
+/// left untouched.
+#[tokio::test]
+async fn a_removed_note_is_reported_as_an_orphan() {
+    let project = TestProject::new(
+        r#"#import "@local/ankify:0.1.0": note
+#note("keep", format: "plain", data: (Front: "Q1", Back: "A1"))
+#note("drop", format: "plain", data: (Front: "Q2", Back: "A2"))
+"#,
+    );
+    let first = project.sync().await.result.expect("sync 1");
+    assert_eq!(first.notes_added, 2);
+
+    // Remove one note from the document.
+    project.write(
+        r#"#import "@local/ankify:0.1.0": note
+#note("keep", format: "plain", data: (Front: "Q1", Back: "A1"))
+"#,
+    );
+    let second = project.sync().await.result.expect("sync 2");
+
+    assert_eq!(
+        (
+            second.notes_added,
+            second.notes_updated,
+            second.notes_unchanged,
+        ),
+        (0, 0, 1),
+    );
+    assert!(
+        second.warnings.iter().any(|w| w.contains("'drop'")),
+        "the removed note should be reported as an orphan: {:?}",
+        second.warnings,
+    );
+}
+
+/// Even when every note is removed from the document, the cache entries it used
+/// to have are still reported as orphans rather than vanishing silently.
+#[tokio::test]
+async fn emptying_the_document_reports_every_orphan() {
+    let project = TestProject::new(
+        r#"#import "@local/ankify:0.1.0": note
+#note("first", format: "plain", data: (Front: "Q1", Back: "A1"))
+#note("second", format: "plain", data: (Front: "Q2", Back: "A2"))
+"#,
+    );
+    let first = project.sync().await.result.expect("sync 1");
+    assert_eq!(first.notes_added, 2);
+
+    // Remove every note from the document.
+    project.write(
+        r#"#import "@local/ankify:0.1.0": note
+
+= A document that no longer has any flashcards
+"#,
+    );
+    let second = project.sync().await.result.expect("sync 2");
+
+    assert_eq!(
+        (
+            second.notes_added,
+            second.notes_updated,
+            second.notes_unchanged,
+        ),
+        (0, 0, 0),
+    );
+    for orphan in ["'first'", "'second'"] {
+        assert!(
+            second.warnings.iter().any(|w| w.contains(orphan)),
+            "an emptied document should still report {orphan}: {:?}",
+            second.warnings,
+        );
+    }
+}
+
 #[tokio::test]
 async fn document_without_configure_does_not_crash() {
     let project = TestProject::new(

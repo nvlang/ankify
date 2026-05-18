@@ -46,7 +46,7 @@ When you run `ankify notes.typ`, the CLI:
    only syncs notes that were added or changed.
 
 ```mermaid
-flowchart LR
+flowchart TD
     doc["Typst document:<br/>configure() + note() calls"]
 
     subgraph cli ["ankify CLI"]
@@ -147,6 +147,9 @@ ankify notes.typ
 Take notes as usual; each `definition(...)` both typesets the definition and
 produces a flashcard.
 
+A complete, runnable version of this pattern lives in [`demo/`](demo/) — a short
+lecture that compiles to a PDF *and* syncs to Anki.
+
 ### `note()`
 
 | Parameter | Meaning | Default |
@@ -204,8 +207,11 @@ cards look too small, lower it towards `1.0` if they look too big. If you omit
 
 Run `ankify notes.typ` again whenever you add or edit notes. Thanks to the
 cache, unchanged notes are skipped, edited notes are updated, and new notes are
-added. (Changing a note's *deck* is not migrated — AnkiConnect cannot move an
-existing card between decks.)
+added. Renaming a note's label is recognised as a rename when its content is
+otherwise unchanged, so the existing card is updated in place rather than
+duplicated; a label that disappears from the document is reported as a warning,
+its Anki note left untouched. (Changing a note's *deck* is not migrated —
+AnkiConnect cannot move an existing card between decks.)
 
 ## CLI options
 
@@ -225,6 +231,7 @@ ankify <FILE> [options]
 |---|---|
 | `packages/ankify-typst/` | The `ankify` Typst package (`note`, `configure`). |
 | `packages/ankify-cli/` | The `ankify` CLI and library crate. |
+| `demo/` | A runnable example: a lecture that becomes an Anki deck. |
 
 ## License
 

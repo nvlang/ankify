@@ -133,7 +133,7 @@
 //! - Cache persistence for subsequent runs to enable incremental updates
 
 use crate::ankiconnect::{AnkiAction, AnkiConnect, Field, Note as AnkiNote, NoteId};
-use crate::cache::{Cache, CacheEntry, Sha256};
+use crate::cache::{Cache, CacheEntry, Label, Sha256};
 use crate::compile::{compile_temp_file, CompileConfig, Format};
 use crate::error::{Error, Result};
 use crate::generate::generate_temp_file;
@@ -492,6 +492,9 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
         if ctx.config.cli_mode {
             info!("No notes found in {}", ctx.config.source_file.display());
         }
+        // The document has no notes, but the cache may still hold entries from
+        // an earlier sync — report them all as orphans before bailing out.
+        report_orphans(&ctx.cache, &HashSet::new(), result);
         return Ok(());
     }
 
@@ -532,9 +535,18 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
 
     // Step 4: Pick output files (done by compilation)
     // Step 5: Hash files (in parallel)
-    let processed_notes =
+    let mut processed_notes =
         process_notes_with_hashes(&completed_metadata_notes, &compile_result.notes, &ctx.cache)
             .await?;
+
+    // Recognise relabelled notes (so a rename updates the card in place instead
+    // of duplicating it) and report cache entries with no matching note.
+    detect_renames_and_report_orphans(
+        &mut processed_notes,
+        &mut ctx.cache,
+        result,
+        ctx.config.cli_mode,
+    );
 
     // Step 6: Decision-making - create RequestList
     let request_list = create_request_list(&processed_notes, &ctx.cache, &ctx.anki_client).await?;
@@ -740,6 +752,146 @@ async fn process_notes_with_hashes(
     }
 
     Ok(processed_notes)
+}
+
+/// A note's content fingerprint: its field hashes flattened into a canonical,
+/// comparable, hashable form (entries sorted, strings owned).
+type Fingerprint = Vec<(String, Option<String>)>;
+
+/// Reduce a note's field-hash map to a canonical fingerprint.
+fn fingerprint(hashes: &HashMap<Field, Option<Sha256>>) -> Fingerprint {
+    let mut fp: Fingerprint = hashes
+        .iter()
+        .map(|(field, hash)| {
+            (
+                field.as_str().to_string(),
+                hash.as_ref().map(|h| h.as_str().to_string()),
+            )
+        })
+        .collect();
+    fp.sort();
+    fp
+}
+
+/// Pair orphaned cache entries with fresh notes whose content is byte-identical,
+/// so a note that was merely relabelled is recognised as the same card.
+///
+/// A pair is returned only when a fingerprint is unique on both sides — exactly
+/// one orphan and one fresh note share it. An ambiguous fingerprint, shared by
+/// several notes, is never guessed; those notes are left as they are.
+fn match_renames(
+    fresh: &[(usize, Fingerprint)],
+    orphans: &[(String, Fingerprint)],
+) -> Vec<(String, usize)> {
+    let mut fresh_by_fp: HashMap<&Fingerprint, Vec<usize>> = HashMap::new();
+    for (index, fp) in fresh {
+        fresh_by_fp.entry(fp).or_default().push(*index);
+    }
+
+    let mut orphans_by_fp: HashMap<&Fingerprint, Vec<&str>> = HashMap::new();
+    for (label, fp) in orphans {
+        orphans_by_fp.entry(fp).or_default().push(label.as_str());
+    }
+
+    let mut pairs = Vec::new();
+    for (fp, indices) in &fresh_by_fp {
+        if indices.len() != 1 {
+            continue;
+        }
+        let Some(labels) = orphans_by_fp.get(fp) else {
+            continue;
+        };
+        if labels.len() == 1 {
+            pairs.push((labels[0].to_string(), indices[0]));
+        }
+    }
+    pairs
+}
+
+/// Recognise relabelled notes, and report cache entries with no matching note.
+///
+/// A note that is new to the cache but whose rendered content is byte-identical
+/// to an orphaned cache entry — one whose label has disappeared from the
+/// document — is almost certainly the same card under a new label. When the
+/// match is unambiguous, the cache entry is moved to the new label, preserving
+/// the Anki note ID, so the note is updated in place rather than duplicated.
+///
+/// Orphans not explained by a rename are reported as warnings: the note is gone
+/// from the document, but its Anki note is left untouched.
+fn detect_renames_and_report_orphans(
+    processed_notes: &mut [ProcessedNote],
+    cache: &mut Cache,
+    result: &mut SyncResult,
+    cli_mode: bool,
+) {
+    let document_labels: HashSet<String> = processed_notes
+        .iter()
+        .map(|note| note.metadata.label.clone())
+        .collect();
+
+    let orphans: Vec<(String, Fingerprint)> = cache
+        .entries()
+        .iter()
+        .filter(|(label, _)| !document_labels.contains(label.as_str()))
+        .map(|(label, entry)| (label.clone(), fingerprint(&entry.hash)))
+        .collect();
+
+    if orphans.is_empty() {
+        return;
+    }
+
+    let fresh: Vec<(usize, Fingerprint)> = processed_notes
+        .iter()
+        .enumerate()
+        .filter(|(_, note)| note.is_new)
+        .map(|(index, note)| (index, fingerprint(&note.field_hashes)))
+        .collect();
+
+    for (old_label, fresh_index) in match_renames(&fresh, &orphans) {
+        let Some(mut entry) = cache.remove(&old_label) else {
+            continue;
+        };
+        let new_label = processed_notes[fresh_index].metadata.label.clone();
+        entry.label = Label::new(new_label.clone());
+        cache.insert(new_label.clone(), entry);
+        processed_notes[fresh_index].is_new = false;
+
+        if cli_mode {
+            info!(
+                "note '{}' was renamed to '{}'; updating it in place",
+                old_label, new_label
+            );
+        }
+    }
+
+    // Rename detection has moved relabelled entries onto their new, in-document
+    // labels; whatever is still keyed by an absent label is a genuine orphan.
+    report_orphans(cache, &document_labels, result);
+}
+
+/// Report every cache entry whose label is absent from the document: the note
+/// is gone — deleted, or renamed alongside an edit — and its Anki note is left
+/// untouched. Used both after rename detection and when the document has no
+/// notes at all.
+fn report_orphans(cache: &Cache, document_labels: &HashSet<String>, result: &mut SyncResult) {
+    let mut orphan_labels: Vec<&str> = cache
+        .entries()
+        .keys()
+        .map(String::as_str)
+        .filter(|&label| !document_labels.contains(label))
+        .collect();
+    orphan_labels.sort_unstable();
+
+    for label in orphan_labels {
+        let message = format!(
+            "cached note '{}' is no longer in the document \
+             (deleted, or renamed alongside an edit); \
+             its Anki note was left untouched",
+            label
+        );
+        warn!("{}", message);
+        result.warnings.push(message);
+    }
 }
 
 /// Determine whether an existing note differs from its cached state and thus
@@ -1046,4 +1198,95 @@ async fn update_cache_with_added_notes(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fingerprint_of(content: &str) -> Fingerprint {
+        vec![("Front".to_string(), Some(content.to_string()))]
+    }
+
+    #[test]
+    fn match_renames_pairs_a_unique_rename() {
+        let fresh = [(0usize, fingerprint_of("alpha"))];
+        let orphans = [("old-label".to_string(), fingerprint_of("alpha"))];
+        assert_eq!(
+            match_renames(&fresh, &orphans),
+            vec![("old-label".to_string(), 0)]
+        );
+    }
+
+    #[test]
+    fn match_renames_ignores_different_content() {
+        let fresh = [(0usize, fingerprint_of("alpha"))];
+        let orphans = [("old-label".to_string(), fingerprint_of("beta"))];
+        assert!(match_renames(&fresh, &orphans).is_empty());
+    }
+
+    #[test]
+    fn match_renames_skips_ambiguous_orphans() {
+        // Two orphans share the fresh note's content: the rename is ambiguous.
+        let fresh = [(0usize, fingerprint_of("alpha"))];
+        let orphans = [
+            ("old-a".to_string(), fingerprint_of("alpha")),
+            ("old-b".to_string(), fingerprint_of("alpha")),
+        ];
+        assert!(match_renames(&fresh, &orphans).is_empty());
+    }
+
+    #[test]
+    fn match_renames_skips_ambiguous_fresh_notes() {
+        // Two fresh notes share an orphan's content: the rename is ambiguous.
+        let fresh = [
+            (0usize, fingerprint_of("alpha")),
+            (1usize, fingerprint_of("alpha")),
+        ];
+        let orphans = [("old-label".to_string(), fingerprint_of("alpha"))];
+        assert!(match_renames(&fresh, &orphans).is_empty());
+    }
+
+    #[test]
+    fn match_renames_pairs_several_independent_renames() {
+        let fresh = [
+            (0usize, fingerprint_of("alpha")),
+            (1usize, fingerprint_of("beta")),
+        ];
+        let orphans = [
+            ("old-alpha".to_string(), fingerprint_of("alpha")),
+            ("old-beta".to_string(), fingerprint_of("beta")),
+        ];
+        let mut pairs = match_renames(&fresh, &orphans);
+        pairs.sort();
+        assert_eq!(
+            pairs,
+            vec![("old-alpha".to_string(), 0), ("old-beta".to_string(), 1)]
+        );
+    }
+
+    #[test]
+    fn match_renames_handles_no_fresh_notes() {
+        let orphans = [("old-label".to_string(), fingerprint_of("alpha"))];
+        assert!(match_renames(&[], &orphans).is_empty());
+    }
+
+    #[test]
+    fn fingerprint_is_independent_of_field_order() {
+        let mut one: HashMap<Field, Option<Sha256>> = HashMap::new();
+        one.insert(
+            Field::new("Front".to_string()),
+            Some(Sha256::from_text("q")),
+        );
+        one.insert(Field::new("Back".to_string()), Some(Sha256::from_text("a")));
+
+        let mut two: HashMap<Field, Option<Sha256>> = HashMap::new();
+        two.insert(Field::new("Back".to_string()), Some(Sha256::from_text("a")));
+        two.insert(
+            Field::new("Front".to_string()),
+            Some(Sha256::from_text("q")),
+        );
+
+        assert_eq!(fingerprint(&one), fingerprint(&two));
+    }
 }
