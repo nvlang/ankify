@@ -354,6 +354,30 @@ async fn png_notes_attach_valid_image_media() {
     }
 }
 
+/// `cloze()` cards must reach Anki as text — the `{{c1::..}}` markers only work
+/// as literal field content — so `cloze()` forces `plain` rendering regardless
+/// of the document's default format.
+#[tokio::test]
+async fn cloze_cards_are_sent_as_plain_text() {
+    let project = TestProject::new(
+        r#"#import "@local/ankify:0.1.0": cloze, configure
+#configure(defaults: (deck: "Default", format: "svg"))
+#cloze("cz", "The capital of Japan is {{c1::Tokyo}}.")
+"#,
+    );
+    let outcome = project.sync().await;
+    outcome.result.expect("sync should succeed");
+
+    let note = &add_notes(&outcome.requests)["params"]["notes"][0];
+    assert_eq!(note["modelName"], "Cloze");
+    // Despite the document default of `svg`, the field is the literal string,
+    // so Anki sees the {{c1::}} marker.
+    assert_eq!(
+        note["fields"]["Text"],
+        "The capital of Japan is {{c1::Tokyo}}."
+    );
+}
+
 /// Regression test for the field-to-image mapping.
 ///
 /// With prose in the source document, each note field's rendered image must
