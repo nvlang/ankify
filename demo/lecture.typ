@@ -17,14 +17,14 @@
 
 // --- Ankify configuration ----------------------------------------------------
 // Document-wide defaults. Every card lands in the "Real Analysis" deck, carries
-// these tags, and is rendered as a crisp, theme-aware SVG — so the mathematics
-// survives and the card follows Anki's light or dark mode.
+// these tags, and is rendered to a PNG image — so the mathematics and
+// formatting survive intact on the card.
 #configure(
   scale: 1.6,
   defaults: (
     deck: "Real Analysis",
     tags: ("real-analysis", "lecture-5"),
-    format: "svg",
+    format: "png",
   ),
 )
 

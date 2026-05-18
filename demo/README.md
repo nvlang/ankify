@@ -15,8 +15,8 @@ written in one place and can never drift apart.
 - **`configure()`** — document-wide defaults (deck, tags, render format,
   `scale`), and that it can be called more than once to adjust them.
 - **`note()`** and its shorthands **`basic()`** and **`cloze()`**.
-- **Render formats** — theme-aware `svg` cards, so the mathematics survives and
-  follows Anki's light/dark mode, plus `plain` text for the quick-review cards.
+- **Render formats** — `png` image cards, so the mathematics and formatting
+  survive intact, plus `plain` text for the quick-review cards.
 - **Per-note decks and tags** — the theorems are routed to a
   `Real Analysis::Theorems` sub-deck with an extra tag.
 
