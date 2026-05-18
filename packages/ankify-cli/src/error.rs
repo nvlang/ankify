@@ -25,41 +25,9 @@ pub enum Error {
     #[error("AnkiConnect error: {0}")]
     AnkiConnect(String),
 
-    /// Configuration errors
-    #[error("Configuration error: {0}")]
-    Config(String),
-
     /// Cache/auxiliary file errors
     #[error("Cache error: {0}")]
     Cache(String),
-
-    /// Rendering errors
-    #[error("Rendering error: {0}")]
-    Render(String),
-
-    /// Card validation errors
-    #[error("Card validation error: {0}")]
-    CardValidation(String),
-
-    /// File system errors
-    #[error("File system error: {0}")]
-    FileSystem(String),
-
-    /// Invalid input errors
-    #[error("Invalid input: {0}")]
-    InvalidInput(String),
-
-    /// Watch error (alias for compatibility)
-    #[error("Watch error: {0}")]
-    WatchError(String),
-
-    /// Render error (alias for compatibility)
-    #[error("Render error: {0}")]
-    RenderError(String),
-
-    /// Missing dependency error
-    #[error("Missing dependency: {0}")]
-    MissingDependency(String),
 
     /// Generic error with custom message
     #[error("{0}")]
@@ -85,23 +53,8 @@ impl Error {
         Error::AnkiConnect(message.into())
     }
 
-    /// Create a new configuration error with the given message.
-    pub fn config<S: Into<String>>(message: S) -> Self {
-        Error::Config(message.into())
-    }
-
     /// Create a new cache error with the given message.
     pub fn cache<S: Into<String>>(message: S) -> Self {
         Error::Cache(message.into())
-    }
-
-    /// Create a new rendering error with the given message.
-    pub fn render<S: Into<String>>(message: S) -> Self {
-        Error::Render(message.into())
-    }
-
-    /// Create a new card validation error with the given message.
-    pub fn card_validation<S: Into<String>>(message: S) -> Self {
-        Error::CardValidation(message.into())
     }
 }

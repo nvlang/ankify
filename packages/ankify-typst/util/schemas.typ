@@ -1,7 +1,7 @@
 #import "@preview/valkyrie:0.2.2" as z
 
 #let default-configuration = (
-  ankiconnect-url: "http://localhost:8765",
+  ankiconnect-url: "http://127.0.0.1:8765",
   verbose: false,
   scale: 1.5,
   defaults: (
@@ -62,12 +62,16 @@
           )
         }
       }
+      assert(
+        "value" in value,
+        message: "A field's (value, format) dictionary must contain a \"value\" key",
+      )
     }
   }
 }
 
 #let note-schema = z.dictionary((
-  label: z.string(optional: true, assertions: (z.assert.length.min(1),)),
+  label: z.string(assertions: (z.assert.length.min(1),)),
   deck: z.string(default: default-configuration.defaults.deck, assertions: (z.assert.length.min(1),)),
   model: z.string(default: default-configuration.defaults.model, assertions: (z.assert.length.min(1),)),
   format: z.choice(("svg", "png", "plain"), default: default-configuration.defaults.format),

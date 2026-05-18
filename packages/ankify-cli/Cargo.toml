@@ -1,9 +1,10 @@
 [package]
 name = "ankify"
-version = "2.0.0"
+version = "0.1.0"
 edition = "2021"
-description = "Advanced Typst to Anki bridge with caching, templating, and watch mode support"
-authors = ["N. V. Lang <@nvlang>"]
+rust-version = "1.82"
+description = "Generate and sync Anki flashcards from your Typst documents."
+authors = ["N. V. Lang"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/nvlang/ankify"

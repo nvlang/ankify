@@ -15,6 +15,9 @@
 </div>
 <br>
 
+> **Alpha** — `ankify` is alpha software under active development. Expect
+> bugs, rough edges, and breaking changes between releases.
+
 `ankify` lets you mark up [Anki](https://apps.ankiweb.net) flashcards inline as
 you write Typst. Its companion **`ankify` command-line tool** then renders each
 card and syncs it to Anki. Take your notes once, in Typst, and get
@@ -71,6 +74,8 @@ Write your notes as usual; each `definition(...)` both typesets the definition
 | `model` | Anki note type. | `"Basic"` |
 | `tags` | Array of tag strings. | `()` |
 | `format` | `"svg"`, `"png"`, or `"plain"` — how the fields render. | `"png"` |
+| `other` | Extra metadata passed through to AnkiConnect. | `none` |
+| `render` | Function transforming each field before it is rendered (advanced). | identity |
 
 A field's value may be a string, Typst content, or a `(value, format)`
 dictionary that overrides the format for that one field. `svg` cards are

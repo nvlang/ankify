@@ -10,7 +10,7 @@ use std::collections::HashMap;
 pub struct TypstAnkifyConfiguration {
     /// AnkiConnect URL.
     ///
-    /// Default: `"http://localhost:8765"`
+    /// Default: `"http://127.0.0.1:8765"`
     #[serde(rename = "ankiconnect-url")]
     pub ankiconnect_url: Option<String>,
 
@@ -229,7 +229,7 @@ pub struct NoteDefaults {
 pub struct CompletedTypstAnkifyConfiguration {
     /// AnkiConnect URL.
     ///
-    /// Default: `"http://localhost:8765"`
+    /// Default: `"http://127.0.0.1:8765"`
     #[serde(rename = "ankiconnect-url")]
     pub ankiconnect_url: String,
 
@@ -252,40 +252,4 @@ pub struct CompletedTypstAnkifyConfiguration {
 
     /// Default values for notes.
     pub defaults: NoteDefaults,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CompletedNoteDefaults {
-    /// The default model to use for notes.
-    ///
-    /// Default: `"Basic"`
-    pub model: String,
-
-    /// The default deck to which to add notes.
-    ///
-    /// Default: `"Default"`
-    pub deck: String,
-
-    /// Default tags to apply to notes.
-    ///
-    /// Default: `[]`
-    pub tags: Vec<String>,
-
-    /// Additional data that may be present in the note metadata by default.
-    ///
-    /// Values may be anything, but I'm not sure how to best represent that in
-    /// Rust's type system.
-    ///
-    /// Default: `none`
-    pub other: Option<serde_json::Value>,
-
-    /// The format in which the note's fields should be rendered by default.
-    ///
-    /// Default: `"png"`
-    pub format: String,
-
-    /// Default render function (stored as opaque value since it's a function).
-    ///
-    /// Default: identity function that returns field content
-    pub render: Option<serde_json::Value>,
 }

@@ -9,19 +9,9 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
-    let filter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap();
-
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(filter)
-        .init();
-
     let matches = Command::new("ankify")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Advanced Typst to Anki bridge with caching, templating, and watch mode support")
+        .about(env!("CARGO_PKG_DESCRIPTION"))
         .arg(
             Arg::new("file")
                 .help("The Typst source file to process")
@@ -45,9 +35,8 @@ async fn main() {
         .arg(
             Arg::new("ankiconnect-url")
                 .long("ankiconnect-url")
-                .help("Custom AnkiConnect URL")
-                .value_name("URL")
-                .default_value("http://127.0.0.1:8765"),
+                .help("AnkiConnect URL (default: from the document, else http://127.0.0.1:8765)")
+                .value_name("URL"),
         )
         .arg(
             Arg::new("root")
@@ -67,6 +56,20 @@ async fn main() {
     // Extract arguments
     let source_file = PathBuf::from(matches.get_one::<String>("file").unwrap());
     let verbose = matches.get_flag("verbose");
+
+    // Initialize tracing. The filter is reloadable so that a `verbose: true`
+    // set inside the document can raise the level once the sync reads it.
+    let initial_level = if verbose { "debug" } else { "info" };
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(initial_level));
+    let (filter, reload_handle) = tracing_subscriber::reload::Layer::new(env_filter);
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(filter)
+        .init();
+    ankify::logging::register_verbose_hook(Box::new(move || {
+        let _ = reload_handle.modify(|f| *f = EnvFilter::new("debug"));
+    }));
     let cache_file = matches.get_one::<String>("cache-file").map(PathBuf::from);
     let ankiconnect_url = matches
         .get_one::<String>("ankiconnect-url")

@@ -15,6 +15,9 @@
 </div>
 <br>
 
+> **Alpha** — Ankify is alpha software under active development. Expect
+> bugs, rough edges, and breaking changes between releases.
+
 Ankify lets you take notes in [Typst](https://typst.app) the way you normally
 would and, with very little extra effort, generate an [Anki](https://apps.ankiweb.net)
 flashcard for each definition, theorem, lemma — whatever you like.
@@ -41,6 +44,24 @@ When you run `ankify notes.typ`, the CLI:
 3. sends `addNotes` / `updateNote` requests to AnkiConnect;
 4. records what it pushed in a cache (`.ankify/cache.json`), so the next run
    only syncs notes that were added or changed.
+
+```mermaid
+flowchart TD
+    doc["Typst document<br/>using note() and configure()"]
+    doc --> cli(["ankify CLI"])
+    cli --> query["Query the document<br/>for notes and configuration"]
+    cli --> render["Render each note field with Typst<br/>as svg, png, or plain text"]
+    cache[(".ankify/cache.json")]
+    query --> diff{"Diff against<br/>the cache"}
+    render --> diff
+    cache --> diff
+    diff -->|new| add["addNotes"]
+    diff -->|changed| update["updateNote"]
+    diff -->|unchanged| skip["skip"]
+    add --> anki["Anki<br/>via the AnkiConnect add-on"]
+    update --> anki
+    anki --> cache
+```
 
 ## Requirements
 
@@ -128,6 +149,8 @@ produces a flashcard.
 | `model` | Anki note type. | `"Basic"` |
 | `tags` | Array of tag strings. | `()` |
 | `format` | How fields render: `"png"`, `"svg"`, or `"plain"`. | `"png"` |
+| `other` | Extra metadata passed through to AnkiConnect. | `none` |
+| `render` | Function transforming each field before it is rendered (advanced). | identity |
 
 A field's value may be a string, Typst content, or a `(value, format)`
 dictionary to override the format per field.
@@ -158,7 +181,7 @@ Optional — call it once near the top of the document.
 
 ```typ
 #configure(
-  ankiconnect-url: "http://localhost:8765",
+  ankiconnect-url: "http://127.0.0.1:8765",
   verbose: true,
   scale: 1.5,
   defaults: (deck: "My Course", model: "Basic", tags: ("lecture",), format: "svg"),
@@ -181,11 +204,11 @@ existing card between decks.)
 ```
 ankify <FILE> [options]
 
-  -v, --verbose             Verbose output
-      --cache-file <PATH>   Custom cache file location
-      --ankiconnect-url <URL>   AnkiConnect URL (default: http://127.0.0.1:8765)
-      --root <DIR>          Typst project root
-      --font-path <PATH>    Additional font path (repeatable)
+  -v, --verbose                Verbose output
+      --cache-file <PATH>      Custom cache file location
+      --ankiconnect-url <URL>  AnkiConnect URL (default: http://127.0.0.1:8765)
+      --root <DIR>             Typst project root
+      --font-path <PATH>       Additional font path (repeatable)
 ```
 
 ## Project layout

@@ -15,6 +15,9 @@
 </div>
 <br>
 
+> **Alpha** — `ankify` is alpha software under active development. Expect
+> bugs, rough edges, and breaking changes between releases.
+
 `ankify` is the command-line tool — and library — at the heart of
 [Ankify](https://github.com/nvlang/ankify). It reads a Typst document that uses
 the [`ankify` Typst package](https://typst.app/universe/package/ankify), renders

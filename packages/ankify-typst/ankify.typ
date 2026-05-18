@@ -28,11 +28,11 @@
 /// ## Usage
 ///
 /// ```typst
-/// #import "ankify.typ": card, configure
+/// #import "ankify.typ": note, configure
 ///
 /// // Configure Ankify settings
 /// #configure(
-///   ankiconnect-url: "http://localhost:8765",
+///   ankiconnect-url: "http://127.0.0.1:8765",
 ///   verbose: true,
 ///   defaults: (
 ///     model: "Basic",
@@ -163,18 +163,37 @@
       note-object,
     )
 
+    // Structural invariants — always enforced, even when `checks.typst` is
+    // disabled: a card is meaningless without a non-empty label and at least
+    // one data field.
+    assert(
+      type(note-object.label) == str and note-object.label.len() > 0,
+      message: "note() requires a non-empty string label",
+    )
+    assert(
+      type(note-object.data) == dictionary and note-object.data.len() > 0,
+      message: "note '" + note-object.label + "' requires a non-empty `data` dictionary",
+    )
+
     let checks = __ankify-configuration.get().checks
 
     if (checks.typst) {
       note-object = z.parse(note-object, note-schema)
     }
 
-    // Store as metadata for CLI extraction - filter content only in the data field
-    let filtered-note = note-object
-    if (note-object.data != none) {
-      filtered-note.data = filter-content(note-object.data)
-    }
-    [#metadata(filtered-note) <ankify-note>]
+    // Emit the note as document metadata for the CLI to query. `render` is
+    // dropped — it is a function, so it would serialise to a useless
+    // placeholder; the renderer reads it from document state instead.
+    let metadata-note = (
+      label: note-object.label,
+      data: filter-content(note-object.data),
+      model: note-object.model,
+      deck: note-object.deck,
+      tags: note-object.tags,
+      other: note-object.other,
+      format: note-object.format,
+    )
+    [#metadata(metadata-note) <ankify-note>]
 
     // Return both the update (which places the state change) and the content
     [
@@ -187,80 +206,19 @@
 }
 
 
-/// Configure Ankify settings for the current document.
-///
-/// This function stores configuration metadata that affects how the Ankify
-/// CLI tool processes cards in this document. Settings specified here can
-/// be overridden by CLI arguments.
-///
-/// === Arguments
-///
-/// - `ankiconnect-url` (optional): URL for AnkiConnect API
-/// - `verbose` (optional): Enable verbose output
-/// - `scale` (optional): Factor by which rendered card images are enlarged (default: 1.5)
-/// - `defaults` (optional): Default values for card fields
-/// - `setup` (optional): Setup function
-/// - `render` (optional): Render function
-/// - `cache` (optional): Cache settings
-///   - `enabled`: Whether to enable caching (default: true)
-///   - `custom-file`: Path to custom cache file (default: none, uses default cache)
-/// - `checks` (optional): Validation checks to perform
-///   - `typst`: Checks for Typst data and format
-///   - `ankiconnect`: Checks for AnkiConnect fields like model, deck, or tags
-///
-/// === Examples
-///
-/// Basic configuration:
-//
-/// ```typst
-/// #configure(
-///   ankiconnect-url: "http://localhost:8765",
-///   verbose: true
-/// )
-/// ```
-///
-/// Configuration with example defaults:
-///
-/// ```typst
-/// #configure(
-///   defaults: (
-///     model: "Basic",
-///     deck: "MyStudyDeck",
-///     tags: ("study", "important"),
-///     data: (
-///       Extra: "Default extra information"
-///     )
-///   )
-/// )
-/// ```
-///
-/// Configuration with different render function:
-///
-/// ```typst
-/// #configure(
-///   render: (note: dictionary, field: str) => {
-///     [#field: #note.data[field]]
-///   },
-///   defaults: (
-///     format: "png"
-///   )
-/// )
-/// ```
-///
-///
-
 // Configure Ankify.
 //
-// *⚠ Warning:* Note that only the `defaults` parameter is properly stateful, i.e., can be
-// changed throughout the document and will have these changes respected. For
-// all other parameters, only the last value set in the document will be
-// respected.
+// `configure()` may be called more than once. Each call merges into the
+// running configuration: only the parameters you pass take effect, and
+// everything else is left untouched. Dictionary parameters (`defaults`,
+// `cache`, `checks`) merge key by key, so a later call can adjust a single
+// nested setting without resetting its siblings.
 //
 // = Examples
 //
 // ```typst
 // #configure(
-//   ankiconnect-url: "http://localhost:8765",
+//   ankiconnect-url: "http://127.0.0.1:8765",
 //   setup: body => {
 //     set page(fill: rgb("#111"))
 //     body
@@ -272,7 +230,7 @@
 //
 // - ankiconnect-url (str): URL for AnkiConnect API.
 //
-//   _Default:_ `"http://localhost:8765"`
+//   _Default:_ `"http://127.0.0.1:8765"`
 //
 // - verbose (bool): Enable verbose output.
 //
@@ -328,10 +286,8 @@
 //   return `body` after performing some setup actions, such as setting the
 //   page layout.
 //
-//   _Default:_
-//   ```typ
-//   none
-//   ```
+//   _Default:_ a built-in function that sets a 16cm-wide page with 1cm
+//   margins. Pass your own function to override it.
 //
 //   _Example with default page layout:_
 //   ```typ
@@ -373,30 +329,13 @@
 //
 // -> none
 #let configure(
-  ankiconnect-url: "http://localhost:8765",
-  verbose: false,
+  ankiconnect-url: none,
+  verbose: none,
   scale: none,
-  defaults: (
-    model: "Basic",
-    deck: "Default",
-    format: "png",
-    tags: (),
-    other: none,
-    render: (note: none, field: none, field-content: none) => { field-content },
-  ),
+  defaults: none,
   setup: none,
-  cache: (
-    enabled: true,
-    custom-file: none,
-  ),
-  checks: (
-    typst: true,
-    ankiconnect: (
-      model: true,
-      deck: true,
-      tags: true,
-    ),
-  ),
+  cache: none,
+  checks: none,
 ) = {
   __ankify-configuration.update(config => {
     let new-config = (

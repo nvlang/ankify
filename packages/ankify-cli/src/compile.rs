@@ -22,23 +22,6 @@ use std::path::{Path, PathBuf};
 
 use tokio::process::Command as AsyncCommand;
 
-/// Get the root path for the monorepo (for --root flag).
-fn get_root_path() -> Result<PathBuf> {
-    // Try to get CARGO_MANIFEST_DIR first (for development)
-    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-        return std::path::PathBuf::from(manifest_dir)
-            .parent() // packages
-            .ok_or_else(|| Error::custom("Cannot find packages directory"))?
-            .parent() // ankify root
-            .ok_or_else(|| Error::custom("Cannot find monorepo root"))
-            .map(|p| p.to_path_buf());
-    }
-
-    // Fallback: use current directory for release builds
-    std::env::current_dir()
-        .map_err(|e| Error::custom(format!("Cannot get current directory: {}", e)))
-}
-
 /// Format types for rendering note fields.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Format {
@@ -60,6 +43,19 @@ impl Format {
         }
     }
 
+    /// Parse a format name, rejecting anything that is not a known format.
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "plain" => Ok(Format::Plain),
+            "svg" => Ok(Format::Svg),
+            "png" => Ok(Format::Png),
+            other => Err(Error::custom(format!(
+                "unknown card format '{}' (expected \"svg\", \"png\", or \"plain\")",
+                other
+            ))),
+        }
+    }
+
     /// Get the typst format argument for this format.
     pub fn typst_arg(&self) -> &'static str {
         match self {
@@ -70,24 +66,11 @@ impl Format {
     }
 }
 
-impl From<&str> for Format {
-    fn from(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "plain" => Format::Plain,
-            "svg" => Format::Svg,
-            "png" => Format::Png,
-            _ => Format::Png, // Default to PNG for unknown formats
-        }
-    }
-}
-
 /// Configuration for compiling Typst files.
 #[derive(Debug, Clone)]
 pub struct CompileConfig {
     /// The temporary Typst file to compile.
     pub temp_file: PathBuf,
-    /// The source Typst file (for root directory calculation).
-    pub source_file: PathBuf,
     /// Output directory for compiled files.
     pub output_dir: PathBuf,
     /// Additional arguments to pass to typst compile.
@@ -102,18 +85,16 @@ impl CompileConfig {
     /// Create a new compile configuration.
     pub fn new(
         temp_file: PathBuf,
-        source_file: PathBuf,
         output_dir: PathBuf,
         completed_notes_metadata: Vec<CompletedNote>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             temp_file,
-            source_file,
             output_dir,
             extra_args: Vec::new(),
-            required_formats: query::determine_required_formats(&completed_notes_metadata),
+            required_formats: query::determine_required_formats(&completed_notes_metadata)?,
             completed_notes_metadata,
-        }
+        })
     }
 
     /// Add extra arguments to the typst compile command.
@@ -130,14 +111,6 @@ pub struct CompileResult {
     pub notes: Vec<AnkiNote>,
     /// Paths to generated output files.
     pub output_files: HashMap<Format, Vec<PathBuf>>,
-}
-
-#[derive(Debug)]
-pub struct FilesWithFormat {
-    /// The format of the files.
-    pub format: Format,
-    /// The list of output files generated for this format.
-    pub files: Vec<PathBuf>,
 }
 
 /// Compile a temporary Typst file and generate Anki notes.
@@ -207,45 +180,15 @@ async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<P
         .output_dir
         .join(format!("output-{{p}}.{}", format.extension()));
 
-    // Check if extra_args contains a custom --root, otherwise use default
-    let mut custom_root = None;
-    let mut i = 0;
-    while i < config.extra_args.len() {
-        if config.extra_args[i] == "--root" && i + 1 < config.extra_args.len() {
-            custom_root = Some(&config.extra_args[i + 1]);
-            break;
-        }
-        i += 1;
-    }
-
-    let root_dir = match custom_root {
-        Some(root) => std::path::PathBuf::from(root),
-        None => get_root_path()?,
-    };
-
-    // Build the typst compile command
+    // Build the typst compile command. `extra_args` already carries a resolved
+    // `--root` (and any `--font-path`s) set up by the sync module, so the
+    // compile and the metadata query share one project root.
     let mut cmd = AsyncCommand::new("typst");
-    cmd.arg("compile")
-        .arg("--format")
-        .arg(format.typst_arg())
-        .arg("--root")
-        .arg(root_dir)
-        .arg(&config.temp_file)
-        .arg(&output_pattern);
-
-    // Add any extra arguments (but skip --root args since we handled them)
-    let mut skip_next = false;
+    cmd.arg("compile").arg("--format").arg(format.typst_arg());
     for arg in &config.extra_args {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        if arg == "--root" {
-            skip_next = true;
-            continue;
-        }
         cmd.arg(arg);
     }
+    cmd.arg(&config.temp_file).arg(&output_pattern);
 
     // Execute the command
     let output = cmd
@@ -329,7 +272,7 @@ async fn associate_files_with_notes(
 
         for field_name in sorted_fields {
             let field_value = &metadata_note.data[field_name];
-            let field_format = Format::from(field_value.format.as_str());
+            let field_format = Format::parse(field_value.format.as_str())?;
             let output_file = file_associations.get(&(note_index, field_name.as_str()));
             match field_format {
                 Format::Plain => {
@@ -471,6 +414,20 @@ fn theme_svg(svg: &str) -> String {
         .replace("stroke=\"#000000\"", "stroke=\"currentColor\"")
 }
 
+/// Reduce a label or field name to characters safe for a media filename, so a
+/// note label cannot smuggle path separators into Anki's media directory.
+fn sanitize_filename_part(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 /// Create a media file from an output file.
 pub fn create_media_file(
     output_file: &HashMap<Format, PathBuf>,
@@ -493,8 +450,8 @@ pub fn create_media_file(
     Ok(MediaFile {
         filename: format!(
             "{}@@{}@@{}.{}",
-            note_label,
-            field_name,
+            sanitize_filename_part(note_label),
+            sanitize_filename_part(field_name),
             timestamp,
             format.extension()
         ),
@@ -551,4 +508,43 @@ pub fn cleanup_output_files(dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_parse_accepts_known_formats_case_insensitively() {
+        assert_eq!(Format::parse("svg").unwrap(), Format::Svg);
+        assert_eq!(Format::parse("PNG").unwrap(), Format::Png);
+        assert_eq!(Format::parse("Plain").unwrap(), Format::Plain);
+    }
+
+    #[test]
+    fn format_parse_rejects_unknown_formats() {
+        assert!(Format::parse("jpeg").is_err());
+        assert!(Format::parse("").is_err());
+    }
+
+    #[test]
+    fn format_extension_matches_the_format() {
+        assert_eq!(Format::Svg.extension(), "svg");
+        assert_eq!(Format::Png.extension(), "png");
+        assert_eq!(Format::Plain.extension(), "txt");
+    }
+
+    #[test]
+    fn theme_svg_recolours_black_to_currentcolor() {
+        let themed = theme_svg(r##"<path fill="#000000"/><path stroke="#000000"/>"##);
+        assert!(themed.contains(r#"fill="currentColor""#));
+        assert!(themed.contains(r#"stroke="currentColor""#));
+        assert!(!themed.contains("#000000"));
+    }
+
+    #[test]
+    fn theme_svg_leaves_non_black_colours_untouched() {
+        let svg = r##"<path fill="#0074d9"/>"##;
+        assert_eq!(theme_svg(svg), svg);
+    }
 }

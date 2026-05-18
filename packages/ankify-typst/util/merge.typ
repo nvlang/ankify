@@ -46,6 +46,10 @@
 ///   argument) if they have the same keys.
 /// -> dictionary
 #let merge(..args) = {
+  assert(
+    args.pos().len() > 0,
+    message: "merge() expects at least one dictionary",
+  )
   let acc = args.pos().first()
   for dict in args.pos().slice(1) {
     acc = merge-pair(acc, dict)
