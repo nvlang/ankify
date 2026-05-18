@@ -456,22 +456,31 @@ pub async fn sync(config: SyncConfig) -> Result<SyncResult> {
 
 /// Internal sync implementation.
 async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result<()> {
-    // Honour the user's --root / --font-path flags, defaulting --root to the
-    // current directory when the user did not pass one.
-    let extra_args = ctx.config.extra_args.clone();
-    let mut query_args: Vec<&str> = extra_args.iter().map(String::as_str).collect();
-    if !query_args
+    // Resolve the Typst `--root` once, so the metadata query and the compile
+    // phase use the same value. The user's `--root` wins; otherwise it defaults
+    // to the source file's directory, which always covers the source and the
+    // render file generated beside it.
+    let mut typst_args: Vec<String> = ctx.config.extra_args.clone();
+    if !typst_args
         .iter()
-        .any(|a| *a == "--root" || a.starts_with("--root="))
+        .any(|a| a == "--root" || a.starts_with("--root="))
     {
-        query_args.insert(0, ".");
-        query_args.insert(0, "--root");
+        let root = ctx
+            .config
+            .source_file
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        typst_args.insert(0, root.to_string_lossy().into_owned());
+        typst_args.insert(0, "--root".to_string());
     }
+    let typst_arg_refs: Vec<&str> = typst_args.iter().map(String::as_str).collect();
 
     // Query the document's `configure()` block first: it may redirect the
     // AnkiConnect URL, the cache, and the log level before any are used.
     let ankify_config =
-        query_ankify_configuration(&ctx.config.source_file, Some(&query_args)).await?;
+        query_ankify_configuration(&ctx.config.source_file, Some(&typst_arg_refs)).await?;
     ctx.apply_document_configuration(&ankify_config).await?;
 
     // Step 1: Check AnkiConnect, using the now-resolved URL.
@@ -485,7 +494,8 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
     ctx.temp_files.push(temp_file.clone());
 
     // Step 3: Query Typst for the notes.
-    let metadata_notes = query_ankify_notes(&ctx.config.source_file, Some(&query_args)).await?;
+    let metadata_notes =
+        query_ankify_notes(&ctx.config.source_file, Some(&typst_arg_refs)).await?;
 
     if metadata_notes.is_empty() {
         if ctx.config.cli_mode {
@@ -520,7 +530,7 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
         temp_file.parent().unwrap().join("output"),
         completed_metadata_notes.clone(),
     )
-    .with_extra_args(ctx.config.extra_args.clone());
+    .with_extra_args(typst_args.clone());
 
     // Create output directory
     tokio::fs::create_dir_all(&compile_config.output_dir)

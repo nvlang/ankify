@@ -22,23 +22,6 @@ use std::path::{Path, PathBuf};
 
 use tokio::process::Command as AsyncCommand;
 
-/// Get the root path for the monorepo (for --root flag).
-fn get_root_path() -> Result<PathBuf> {
-    // Try to get CARGO_MANIFEST_DIR first (for development)
-    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-        return std::path::PathBuf::from(manifest_dir)
-            .parent() // packages
-            .ok_or_else(|| Error::custom("Cannot find packages directory"))?
-            .parent() // ankify root
-            .ok_or_else(|| Error::custom("Cannot find monorepo root"))
-            .map(|p| p.to_path_buf());
-    }
-
-    // Fallback: use current directory for release builds
-    std::env::current_dir()
-        .map_err(|e| Error::custom(format!("Cannot get current directory: {}", e)))
-}
-
 /// Format types for rendering note fields.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Format {
@@ -207,45 +190,15 @@ async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<P
         .output_dir
         .join(format!("output-{{p}}.{}", format.extension()));
 
-    // Check if extra_args contains a custom --root, otherwise use default
-    let mut custom_root = None;
-    let mut i = 0;
-    while i < config.extra_args.len() {
-        if config.extra_args[i] == "--root" && i + 1 < config.extra_args.len() {
-            custom_root = Some(&config.extra_args[i + 1]);
-            break;
-        }
-        i += 1;
-    }
-
-    let root_dir = match custom_root {
-        Some(root) => std::path::PathBuf::from(root),
-        None => get_root_path()?,
-    };
-
-    // Build the typst compile command
+    // Build the typst compile command. `extra_args` already carries a resolved
+    // `--root` (and any `--font-path`s) set up by the sync module, so the
+    // compile and the metadata query share one project root.
     let mut cmd = AsyncCommand::new("typst");
-    cmd.arg("compile")
-        .arg("--format")
-        .arg(format.typst_arg())
-        .arg("--root")
-        .arg(root_dir)
-        .arg(&config.temp_file)
-        .arg(&output_pattern);
-
-    // Add any extra arguments (but skip --root args since we handled them)
-    let mut skip_next = false;
+    cmd.arg("compile").arg("--format").arg(format.typst_arg());
     for arg in &config.extra_args {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        if arg == "--root" {
-            skip_next = true;
-            continue;
-        }
         cmd.arg(arg);
     }
+    cmd.arg(&config.temp_file).arg(&output_pattern);
 
     // Execute the command
     let output = cmd
