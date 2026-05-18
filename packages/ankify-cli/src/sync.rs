@@ -356,7 +356,7 @@ impl SyncContext {
             }
         }
 
-        for (_, files) in &self.output_files {
+        for files in self.output_files.values() {
             for file in files {
                 if file.exists() {
                     if let Err(e) = fs::remove_file(file).await {
@@ -672,7 +672,7 @@ async fn create_request_list(
     if !truly_new_notes.is_empty() {
         let notes: Vec<AnkiNote> = truly_new_notes
             .iter()
-            .map(|pn| (*pn).anki_note.clone())
+            .map(|pn| pn.anki_note.clone())
             .collect();
         let request = anki_client.action_to_request(AnkiAction::AddNotes { notes });
         requests.push(RequestOrRequestList::Single(request));

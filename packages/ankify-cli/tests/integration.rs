@@ -218,7 +218,7 @@ async fn plain_notes_carry_exact_field_text() {
     assert_eq!(notes[1]["fields"]["Back"], "Answer two");
 
     // Plain-text notes attach no media.
-    assert!(notes[0].get("picture").map_or(true, Value::is_null));
+    assert!(notes[0].get("picture").is_none_or(Value::is_null));
 }
 
 #[tokio::test]
@@ -235,7 +235,7 @@ async fn svg_notes_inline_themable_markup() {
     let note = &add_notes(&outcome.requests)["params"]["notes"][0];
     // SVG fields are inlined into the field value — no media files.
     assert!(
-        note.get("picture").map_or(true, Value::is_null),
+        note.get("picture").is_none_or(Value::is_null),
         "svg notes should attach no media files",
     );
     for field in ["Front", "Back"] {
@@ -259,7 +259,11 @@ async fn svg_notes_inline_themable_markup() {
     // even though the field now holds inline SVG rather than referencing a file.
     let again = project.sync().await.result.expect("re-sync should succeed");
     assert_eq!(
-        (again.notes_added, again.notes_updated, again.notes_unchanged),
+        (
+            again.notes_added,
+            again.notes_updated,
+            again.notes_unchanged
+        ),
         (0, 0, 1),
     );
 }
@@ -489,9 +493,14 @@ async fn per_field_formats_and_per_note_decks() {
     // mixed within the same note via per-field `(format, value)` dicts.
     assert_eq!(notes[0]["deckName"], "Deck A");
     assert_eq!(notes[0]["fields"]["Front"], "Plain question");
-    let back = notes[0]["fields"]["Back"].as_str().expect("Back field value");
-    assert!(back.contains("<svg"), "the svg-format field should be inline SVG");
-    assert!(notes[0].get("picture").map_or(true, Value::is_null));
+    let back = notes[0]["fields"]["Back"]
+        .as_str()
+        .expect("Back field value");
+    assert!(
+        back.contains("<svg"),
+        "the svg-format field should be inline SVG"
+    );
+    assert!(notes[0].get("picture").is_none_or(Value::is_null));
     // Note 2: a different per-note deck.
     assert_eq!(notes[1]["deckName"], "Deck B");
 }
@@ -511,7 +520,11 @@ async fn document_with_no_notes_is_a_no_op() {
         .result
         .expect("sync should succeed on a document with no notes");
     assert_eq!(
-        (result.notes_added, result.notes_updated, result.notes_unchanged),
+        (
+            result.notes_added,
+            result.notes_updated,
+            result.notes_unchanged
+        ),
         (0, 0, 0),
     );
 }

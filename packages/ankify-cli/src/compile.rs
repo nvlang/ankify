@@ -92,9 +92,9 @@ pub struct CompileConfig {
     pub output_dir: PathBuf,
     /// Additional arguments to pass to typst compile.
     pub extra_args: Vec<String>,
-    ///
+    /// Note metadata with all defaults applied, in document order.
     pub completed_notes_metadata: Vec<CompletedNote>,
-    ///
+    /// The image formats that must be compiled for this run.
     pub required_formats: Vec<Format>,
 }
 
@@ -284,7 +284,7 @@ async fn compile_format(config: &CompileConfig, format: &Format) -> Result<Vec<P
                 if filename.starts_with("output-")
                     && path
                         .extension()
-                        .map_or(false, |ext| ext == format.extension())
+                        .is_some_and(|ext| ext == format.extension())
                 {
                     output_files.push(path);
                 }
@@ -420,11 +420,14 @@ async fn associate_files_with_notes(
     Ok(anki_notes)
 }
 
+/// Maps `(note index, field name)` to the rendered output file for each format.
+type FileAssociations<'a> = HashMap<(usize, &'a str), HashMap<Format, PathBuf>>;
+
 /// Create a mapping of (note_index, field_name) to record { [format]: output_file }.
 fn create_file_associations<'a>(
     metadata_notes: &'a [CompletedNote],
     output_files: &'a HashMap<Format, Vec<PathBuf>>,
-) -> Result<HashMap<(usize, &'a str), HashMap<Format, PathBuf>>> {
+) -> Result<FileAssociations<'a>> {
     let mut associations = HashMap::new();
 
     // For each format, get a reference to the Vec<PathBuf>
