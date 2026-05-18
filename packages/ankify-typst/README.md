@@ -74,6 +74,8 @@ Write your notes as usual; each `definition(...)` both typesets the definition
 | `model` | Anki note type. | `"Basic"` |
 | `tags` | Array of tag strings. | `()` |
 | `format` | `"svg"`, `"png"`, or `"plain"` — how the fields render. | `"png"` |
+| `other` | Extra metadata passed through to AnkiConnect. | `none` |
+| `render` | Function transforming each field before it is rendered (advanced). | identity |
 
 A field's value may be a string, Typst content, or a `(value, format)`
 dictionary that overrides the format for that one field. `svg` cards are

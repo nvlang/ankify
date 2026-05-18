@@ -127,6 +127,8 @@ produces a flashcard.
 | `model` | Anki note type. | `"Basic"` |
 | `tags` | Array of tag strings. | `()` |
 | `format` | How fields render: `"png"`, `"svg"`, or `"plain"`. | `"png"` |
+| `other` | Extra metadata passed through to AnkiConnect. | `none` |
+| `render` | Function transforming each field before it is rendered (advanced). | identity |
 
 A field's value may be a string, Typst content, or a `(value, format)`
 dictionary to override the format per field.
@@ -157,7 +159,7 @@ Optional — call it once near the top of the document.
 
 ```typ
 #configure(
-  ankiconnect-url: "http://localhost:8765",
+  ankiconnect-url: "http://127.0.0.1:8765",
   verbose: true,
   scale: 1.5,
   defaults: (deck: "My Course", model: "Basic", tags: ("lecture",), format: "svg"),

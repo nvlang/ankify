@@ -266,7 +266,7 @@ fn apply_configuration_defaults(
 /// might return this:
 ///
 /// ```json
-/// [{"ankiconnect-url":"http://localhost:8765","verbose":true,"defaults":{},"render":"ankify-render","cache":{"enabled":true,"custom-file":null},"checks":{"typst":{"data":true,"format":true},"ankiconnect":{"model":true,"deck":true,"tags":true}}}]
+/// [{"ankiconnect-url":"http://127.0.0.1:8765","verbose":true,"defaults":{},"render":"ankify-render","cache":{"enabled":true,"custom-file":null},"checks":{"typst":{"data":true,"format":true},"ankiconnect":{"model":true,"deck":true,"tags":true}}}]
 /// ```
 ///
 /// Meanwhile,

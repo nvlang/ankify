@@ -28,11 +28,11 @@
 /// ## Usage
 ///
 /// ```typst
-/// #import "ankify.typ": card, configure
+/// #import "ankify.typ": note, configure
 ///
 /// // Configure Ankify settings
 /// #configure(
-///   ankiconnect-url: "http://localhost:8765",
+///   ankiconnect-url: "http://127.0.0.1:8765",
 ///   verbose: true,
 ///   defaults: (
 ///     model: "Basic",
@@ -206,68 +206,6 @@
 }
 
 
-/// Configure Ankify settings for the current document.
-///
-/// This function stores configuration metadata that affects how the Ankify
-/// CLI tool processes cards in this document. Settings specified here can
-/// be overridden by CLI arguments.
-///
-/// === Arguments
-///
-/// - `ankiconnect-url` (optional): URL for AnkiConnect API
-/// - `verbose` (optional): Enable verbose output
-/// - `scale` (optional): Factor by which rendered card images are enlarged (default: 1.5)
-/// - `defaults` (optional): Default values for card fields
-/// - `setup` (optional): Setup function
-/// - `render` (optional): Render function
-/// - `cache` (optional): Cache settings
-///   - `enabled`: Whether to enable caching (default: true)
-///   - `custom-file`: Path to custom cache file (default: none, uses default cache)
-/// - `checks` (optional): Validation checks to perform
-///   - `typst`: Checks for Typst data and format
-///   - `ankiconnect`: Checks for AnkiConnect fields like model, deck, or tags
-///
-/// === Examples
-///
-/// Basic configuration:
-//
-/// ```typst
-/// #configure(
-///   ankiconnect-url: "http://localhost:8765",
-///   verbose: true
-/// )
-/// ```
-///
-/// Configuration with example defaults:
-///
-/// ```typst
-/// #configure(
-///   defaults: (
-///     model: "Basic",
-///     deck: "MyStudyDeck",
-///     tags: ("study", "important"),
-///     data: (
-///       Extra: "Default extra information"
-///     )
-///   )
-/// )
-/// ```
-///
-/// Configuration with different render function:
-///
-/// ```typst
-/// #configure(
-///   render: (note: dictionary, field: str) => {
-///     [#field: #note.data[field]]
-///   },
-///   defaults: (
-///     format: "png"
-///   )
-/// )
-/// ```
-///
-///
-
 // Configure Ankify.
 //
 // `configure()` may be called more than once. Each call merges into the
@@ -280,7 +218,7 @@
 //
 // ```typst
 // #configure(
-//   ankiconnect-url: "http://localhost:8765",
+//   ankiconnect-url: "http://127.0.0.1:8765",
 //   setup: body => {
 //     set page(fill: rgb("#111"))
 //     body
@@ -292,7 +230,7 @@
 //
 // - ankiconnect-url (str): URL for AnkiConnect API.
 //
-//   _Default:_ `"http://localhost:8765"`
+//   _Default:_ `"http://127.0.0.1:8765"`
 //
 // - verbose (bool): Enable verbose output.
 //
@@ -348,10 +286,8 @@
 //   return `body` after performing some setup actions, such as setting the
 //   page layout.
 //
-//   _Default:_
-//   ```typ
-//   none
-//   ```
+//   _Default:_ a built-in function that sets a 16cm-wide page with 1cm
+//   margins. Pass your own function to override it.
 //
 //   _Example with default page layout:_
 //   ```typ
