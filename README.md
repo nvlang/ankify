@@ -11,6 +11,9 @@
 </div>
 <br>
 
+> **Alpha** — Ankify is alpha software under active development. Expect
+> bugs, rough edges, and breaking changes between releases.
+
 Ankify lets you take notes in [Typst](https://typst.app) the way you normally
 would and, with very little extra effort, generate an [Anki](https://apps.ankiweb.net)
 flashcard for each definition, theorem, lemma — whatever you like.
