@@ -145,7 +145,7 @@ use crate::cache::{Cache, CacheEntry, Sha256};
 use crate::compile::{compile_temp_file, CompileConfig, Format};
 use crate::error::{Error, Result};
 use crate::generate::generate_temp_file;
-use crate::metadata::CompletedNote;
+use crate::metadata::{AnkiConnectChecks, CompletedNote, CompletedTypstAnkifyConfiguration};
 use crate::query::{
     complete_ankify_notes_metadata, query_ankify_configuration, query_ankify_notes,
 };
@@ -307,6 +307,9 @@ pub struct SyncContext {
     anki_client: AnkiConnect,
     http_client: Client,
     cache: Cache,
+    /// Whether the cache should be persisted; cleared when the document
+    /// disables caching.
+    cache_enabled: bool,
     temp_files: Vec<PathBuf>,
     output_files: HashMap<Format, Vec<PathBuf>>,
 }
@@ -341,6 +344,7 @@ impl SyncContext {
             anki_client,
             http_client,
             cache,
+            cache_enabled: true,
             temp_files: Vec::new(),
             output_files: HashMap::new(),
         })
@@ -369,9 +373,54 @@ impl SyncContext {
         Ok(())
     }
 
-    /// Save the cache.
+    /// Save the cache, unless the document disabled caching.
     async fn save_cache(&self) -> Result<()> {
+        if !self.cache_enabled {
+            return Ok(());
+        }
         self.cache.save().await
+    }
+
+    /// Apply the settings from the document's `configure()` block: redirect the
+    /// AnkiConnect URL and cache when the document asks for it (a CLI flag
+    /// always wins), and raise the log level if verbose output was requested.
+    async fn apply_document_configuration(
+        &mut self,
+        config: &CompletedTypstAnkifyConfiguration,
+    ) -> Result<()> {
+        // Verbose: either the CLI flag or the document may request it.
+        if self.config.verbose || config.verbose {
+            crate::logging::enable_verbose_logging();
+        }
+
+        // AnkiConnect URL: a CLI flag wins; otherwise use the document's value.
+        if self.config.ankiconnect_url.is_none() {
+            self.anki_client = AnkiConnect::with_url(config.ankiconnect_url.clone());
+        }
+
+        // Cache: a disabled cache becomes ephemeral; otherwise the document's
+        // `custom-file` is honoured unless the CLI passed `--cache-file`.
+        if !config.cache.enabled.unwrap_or(true) {
+            warn!("Caching is disabled; every note will be treated as new");
+            self.cache = Cache::new();
+            self.cache_enabled = false;
+        } else if self.config.cache_file.is_none() {
+            if let Some(custom) = &config.cache.custom_file {
+                let custom_path = std::path::Path::new(custom);
+                let resolved = if custom_path.is_absolute() {
+                    custom_path.to_path_buf()
+                } else {
+                    self.config
+                        .source_file
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("."))
+                        .join(custom_path)
+                };
+                self.cache = Cache::load_from_file(&resolved).await?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -407,20 +456,10 @@ pub async fn sync(config: SyncConfig) -> Result<SyncResult> {
 
 /// Internal sync implementation.
 async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result<()> {
-    // Step 1: Check AnkiConnect
-    check_ankiconnect(&ctx.anki_client, &ctx.http_client).await?;
-
-    // Step 2: Generate temp file (cache has been read already during creation of SyncContext)
-    let temp_file = generate_temp_file(&crate::generate::GenerateConfig {
-        source_file: ctx.config.source_file.clone(),
-        output_dir: None,
-    })?;
-    ctx.temp_files.push(temp_file.clone());
-
-    // Step 3: Query Typst for configuration and notes (in parallel).
     // Honour the user's --root / --font-path flags, defaulting --root to the
     // current directory when the user did not pass one.
-    let mut query_args: Vec<&str> = ctx.config.extra_args.iter().map(String::as_str).collect();
+    let extra_args = ctx.config.extra_args.clone();
+    let mut query_args: Vec<&str> = extra_args.iter().map(String::as_str).collect();
     if !query_args
         .iter()
         .any(|a| *a == "--root" || a.starts_with("--root="))
@@ -428,10 +467,25 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
         query_args.insert(0, ".");
         query_args.insert(0, "--root");
     }
-    let (ankify_config, metadata_notes) = tokio::try_join!(
-        query_ankify_configuration(&ctx.config.source_file, Some(&query_args)),
-        query_ankify_notes(&ctx.config.source_file, Some(&query_args))
-    )?;
+
+    // Query the document's `configure()` block first: it may redirect the
+    // AnkiConnect URL, the cache, and the log level before any are used.
+    let ankify_config =
+        query_ankify_configuration(&ctx.config.source_file, Some(&query_args)).await?;
+    ctx.apply_document_configuration(&ankify_config).await?;
+
+    // Step 1: Check AnkiConnect, using the now-resolved URL.
+    check_ankiconnect(&ctx.anki_client, &ctx.http_client).await?;
+
+    // Step 2: Generate the temporary render file.
+    let temp_file = generate_temp_file(&crate::generate::GenerateConfig {
+        source_file: ctx.config.source_file.clone(),
+        output_dir: None,
+    })?;
+    ctx.temp_files.push(temp_file.clone());
+
+    // Step 3: Query Typst for the notes.
+    let metadata_notes = query_ankify_notes(&ctx.config.source_file, Some(&query_args)).await?;
 
     if metadata_notes.is_empty() {
         if ctx.config.cli_mode {
@@ -445,6 +499,19 @@ async fn sync_internal(ctx: &mut SyncContext, result: &mut SyncResult) -> Result
     }
 
     let completed_metadata_notes = complete_ankify_notes_metadata(metadata_notes, &ankify_config);
+
+    // Validate the notes against Anki's existing decks, models, and tags, per
+    // the document's `checks` configuration.
+    if let Some(checks) = &ankify_config.checks.ankiconnect {
+        run_ankiconnect_checks(
+            checks,
+            &completed_metadata_notes,
+            &ctx.anki_client,
+            &ctx.http_client,
+            result,
+        )
+        .await?;
+    }
 
     // Step 3 continued: Compile the temporary file to generate output files
     let compile_config = CompileConfig::new(
@@ -547,6 +614,88 @@ async fn check_ankiconnect(anki_client: &AnkiConnect, http_client: &Client) -> R
             "AnkiConnect version {} is too old, need at least version 6",
             version
         )));
+    }
+
+    Ok(())
+}
+
+/// Fetch a list of strings (deck names, model names, or tags) from AnkiConnect.
+async fn fetch_string_list(
+    anki_client: &AnkiConnect,
+    http_client: &Client,
+    action: AnkiAction,
+) -> Result<Vec<String>> {
+    let request = anki_client.action_to_request(action);
+    let response = http_client
+        .post(anki_client.url())
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| Error::anki_connect(format!("Failed to send request: {}", e)))?;
+    let text = response
+        .text()
+        .await
+        .map_err(|e| Error::anki_connect(format!("Failed to read response: {}", e)))?;
+    anki_client
+        .parse_response::<Vec<String>>(&text)
+        .map_err(|e| Error::anki_connect(format!("Failed to parse response: {}", e)))
+}
+
+/// Validate each note's model, deck, and tags against what already exists in
+/// Anki, per the document's `checks` configuration.
+///
+/// A missing model is fatal — Anki cannot create note types on the fly. Missing
+/// decks and tags are reported only as warnings, since the sync creates decks
+/// and Anki creates tags as notes are added.
+async fn run_ankiconnect_checks(
+    checks: &AnkiConnectChecks,
+    notes: &[CompletedNote],
+    anki_client: &AnkiConnect,
+    http_client: &Client,
+    result: &mut SyncResult,
+) -> Result<()> {
+    if checks.model.unwrap_or(true) {
+        let models = fetch_string_list(anki_client, http_client, AnkiAction::ModelNames).await?;
+        let models: HashSet<&str> = models.iter().map(String::as_str).collect();
+        for note in notes {
+            if !models.contains(note.model.as_str()) {
+                return Err(Error::anki_connect(format!(
+                    "note '{}' uses model '{}', which does not exist in Anki",
+                    note.label, note.model
+                )));
+            }
+        }
+    }
+
+    if checks.deck.unwrap_or(true) {
+        let decks = fetch_string_list(anki_client, http_client, AnkiAction::DeckNames).await?;
+        let decks: HashSet<&str> = decks.iter().map(String::as_str).collect();
+        let missing: HashSet<&str> = notes
+            .iter()
+            .map(|n| n.deck.as_str())
+            .filter(|d| !decks.contains(d))
+            .collect();
+        for deck in missing {
+            result
+                .warnings
+                .push(format!("deck '{}' does not exist yet — it will be created", deck));
+        }
+    }
+
+    if checks.tags.unwrap_or(true) {
+        let tags = fetch_string_list(anki_client, http_client, AnkiAction::GetTags).await?;
+        let tags: HashSet<&str> = tags.iter().map(String::as_str).collect();
+        let missing: HashSet<&str> = notes
+            .iter()
+            .flat_map(|n| n.tags.iter())
+            .map(String::as_str)
+            .filter(|t| !tags.contains(t))
+            .collect();
+        for tag in missing {
+            result
+                .warnings
+                .push(format!("tag '{}' does not exist yet — it will be created", tag));
+        }
     }
 
     Ok(())

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 pub struct TypstAnkifyConfiguration {
     /// AnkiConnect URL.
     ///
-    /// Default: `"http://localhost:8765"`
+    /// Default: `"http://127.0.0.1:8765"`
     #[serde(rename = "ankiconnect-url")]
     pub ankiconnect_url: Option<String>,
 
@@ -229,7 +229,7 @@ pub struct NoteDefaults {
 pub struct CompletedTypstAnkifyConfiguration {
     /// AnkiConnect URL.
     ///
-    /// Default: `"http://localhost:8765"`
+    /// Default: `"http://127.0.0.1:8765"`
     #[serde(rename = "ankiconnect-url")]
     pub ankiconnect_url: String,
 

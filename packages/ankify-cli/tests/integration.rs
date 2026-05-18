@@ -108,6 +108,7 @@ impl Respond for AnkiConnectMock {
             "deckNames" => json!(["Default"]),
             "deckNamesAndIds" => json!({ "Default": 1 }),
             "modelNames" => json!(["Basic", "Cloze"]),
+            "getTags" => json!(["topic", "study"]),
             _ => Value::Null,
         };
         ResponseTemplate::new(200).set_body_json(json!({ "result": result, "error": null }))

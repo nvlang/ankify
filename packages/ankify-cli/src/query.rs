@@ -245,7 +245,7 @@ fn apply_configuration_defaults(
     CompletedTypstAnkifyConfiguration {
         ankiconnect_url: config
             .ankiconnect_url
-            .unwrap_or("http://localhost:8765".to_string()),
+            .unwrap_or("http://127.0.0.1:8765".to_string()),
         verbose: config.verbose.unwrap_or(false),
         setup: config.setup.unwrap_or(serde_json::Value::Null),
         cache: completed_cache,

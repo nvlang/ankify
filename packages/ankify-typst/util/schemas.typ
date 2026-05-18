@@ -1,7 +1,7 @@
 #import "@preview/valkyrie:0.2.2" as z
 
 #let default-configuration = (
-  ankiconnect-url: "http://localhost:8765",
+  ankiconnect-url: "http://127.0.0.1:8765",
   verbose: false,
   scale: 1.5,
   defaults: (
