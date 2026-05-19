@@ -214,7 +214,7 @@ pub struct NoteDefaults {
 
     /// The format in which the note's fields should be rendered by default.
     ///
-    /// Default: `"png"`
+    /// Default: `"svg"`
     pub format: Option<String>,
 
     /// Default render function (stored as opaque value since it's a function).

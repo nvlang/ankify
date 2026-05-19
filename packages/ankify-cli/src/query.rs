@@ -85,7 +85,7 @@ fn apply_defaults_to_note(note: &mut Note, config: &CompletedTypstAnkifyConfigur
             .defaults
             .format
             .clone()
-            .or_else(|| Some("png".to_string()));
+            .or_else(|| Some("svg".to_string()));
     }
 
     // Apply other field defaults
@@ -116,7 +116,7 @@ fn normalize_data_fields(note: &mut Note) {
 
 /// Helper function to convert Note to CompletedNote
 fn note_to_completed_note(note: Note) -> CompletedNote {
-    let default_format = note.format.unwrap_or_else(|| "png".to_string());
+    let default_format = note.format.unwrap_or_else(|| "svg".to_string());
 
     CompletedNote {
         label: note.label,
@@ -230,7 +230,7 @@ fn apply_configuration_defaults(
         deck: Some("Default".to_string()),
         tags: Some(Vec::new()),
         other: None,
-        format: Some("png".to_string()),
+        format: Some("svg".to_string()),
         render: None,
     });
     let completed_defaults = NoteDefaults {
@@ -238,7 +238,7 @@ fn apply_configuration_defaults(
         deck: Some(defaults.deck.unwrap_or("Default".to_string())),
         tags: Some(defaults.tags.unwrap_or_default()),
         other: defaults.other,
-        format: Some(defaults.format.unwrap_or("png".to_string())),
+        format: Some(defaults.format.unwrap_or("svg".to_string())),
         render: defaults.render,
     };
 

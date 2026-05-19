@@ -159,7 +159,7 @@ lecture that compiles to a PDF *and* syncs to Anki.
 | `deck` | Target Anki deck. | `"Default"` |
 | `model` | Anki note type. | `"Basic"` |
 | `tags` | Array of tag strings. | `()` |
-| `format` | How fields render: `"png"`, `"svg"`, or `"plain"`. | `"png"` |
+| `format` | How fields render: `"png"`, `"svg"`, or `"plain"`. | `"svg"` |
 | `other` | Extra metadata passed through to AnkiConnect. | `none` |
 | `render` | Function transforming each field before it is rendered (advanced). | identity |
 
@@ -169,10 +169,10 @@ dictionary to override the format per field.
 ### `format`
 
 - `plain` — the field is sent to Anki as plain text.
-- `svg` — the field is rendered to SVG and inlined into the card. Crisp,
-  scalable, and **theme-aware** (see [Dark mode](#dark-mode) below).
+- `svg` *(the default)* — the field is rendered to SVG and inlined into the
+  card. Crisp, scalable, and **theme-aware** (see [Dark mode](#dark-mode) below).
 - `png` — the field is rendered to a raster image and attached as media. Use it
-  for genuinely raster content; `svg` is the better default for math and text.
+  for genuinely raster content.
 
 Use `plain` for short text answers and `svg`/`png` for anything with math or
 formatting.
