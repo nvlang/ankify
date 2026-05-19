@@ -50,7 +50,30 @@ jobs:
     name: Typst package check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out ankify
+        uses: actions/checkout@v4
+        with:
+          path: ankify
+
+      # `package-check` resolves a package's `@preview` imports from a local
+      # clone of the registry, not from the network. `ankify` depends only on
+      # `valkyrie`; if it ever gains another `@preview` dependency, add it to
+      # the `sparse-checkout` list below.
+      - name: Check out the Typst package registry
+        uses: actions/checkout@v4
+        with:
+          repository: typst/packages
+          path: typst-packages
+          sparse-checkout: packages/preview/valkyrie
 
       - name: Validate Typst package
-        run: docker run --rm -v "${{ github.workspace }}/packages/ankify-typst:/data" ghcr.io/typst/package-check:0.4.5 check
+        run: |
+          version="$(sed -n 's/^version *= *"\(.*\)"/\1/p' ankify/packages/ankify-typst/typst.toml)"
+          echo "Checking ankify ${version}"
+          dest="typst-packages/packages/preview/ankify/${version}"
+          mkdir -p "${dest}"
+          cp -r ankify/packages/ankify-typst/. "${dest}"
+          docker run --rm \
+            -v "${{ github.workspace }}/typst-packages/packages:/data" \
+            ghcr.io/typst/package-check:0.4.5 \
+            check "@preview/ankify:${version}"
