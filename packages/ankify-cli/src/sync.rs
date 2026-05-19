@@ -19,7 +19,7 @@
 //!     -   Call the `query` module to query the Typst source file for metadata
 //!         about the user's Ankify settings, as well as about the notes to be
 //!         created.
-//!     -   If the cache has any fields in PNG/SVG format (and remember, PNG is
+//!     -   If the cache has any fields in PNG/SVG format (and remember, SVG is
 //!         the default), call the `compile` module on the generated Typst file
 //!         with the corresponding output format flags. If both PNG and SVG
 //!         files are being output, be sure to run the two compilations in
@@ -116,7 +116,7 @@
 //! ### Field Processing Logic
 //! - Fields with `format: "plain"` → Direct text content, no compilation
 //! - Fields with `format: "png"` or `format: "svg"` → Compiled to images, referenced by filename
-//! - Default format (PNG) applied when no explicit format specified
+//! - Default format (SVG) applied when no explicit format specified
 //! - AnkiConnect automatically generates `<img>` tags from filenames in `picture` array
 //!
 //! ### Request Generation
