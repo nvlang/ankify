@@ -114,3 +114,8 @@ add-on, and the incremental sync workflow are all described in the
 ## License
 
 MIT — see [LICENSE](https://github.com/nvlang/ankify/blob/main/LICENSE).
+
+## Trademarks
+
+Anki is a trademark of Ankitects Pty Ltd. `ankify` is an independent project,
+not affiliated with, endorsed by, or sponsored by Ankitects Pty Ltd.

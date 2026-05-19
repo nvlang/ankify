@@ -236,3 +236,8 @@ ankify <FILE> [options]
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Trademarks
+
+Anki is a trademark of Ankitects Pty Ltd. Ankify is an independent project,
+not affiliated with, endorsed by, or sponsored by Ankitects Pty Ltd.
