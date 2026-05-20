@@ -16,7 +16,7 @@
 <br>
 
 > [!WARNING]
-> `ankify` is alpha software under active development. Expect bugs, rough edges,
+> `ankify` is in alpha and under active development. Expect bugs, rough edges,
 > and breaking changes between releases.
 
 `ankify` is the command-line tool — and library — at the heart of
