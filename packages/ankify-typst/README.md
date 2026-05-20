@@ -3,7 +3,7 @@
 <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/nvlang/ankify/main/res/dark/logotype.svg">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/nvlang/ankify/main/res/light/logotype.svg">
-    <img alt="Logotype" src="https://raw.githubusercontent.com/nvlang/ankify/main/res/light/logotype.svg" width="33%">
+    <img alt="Ankify Logotype" src="https://raw.githubusercontent.com/nvlang/ankify/main/res/light/logotype.svg" width="33%">
 </picture>
 <br>
 <br>
@@ -15,8 +15,9 @@
 </div>
 <br>
 
-> **Alpha** — `ankify` is alpha software under active development. Expect
-> bugs, rough edges, and breaking changes between releases.
+> [!WARNING]
+> `ankify` is alpha software under active development. Expect bugs, rough edges,
+> and breaking changes between releases.
 
 `ankify` lets you mark up [Anki](https://apps.ankiweb.net) flashcards inline as
 you write Typst. Its companion **`ankify` command-line tool** then renders each
@@ -113,7 +114,7 @@ add-on, and the incremental sync workflow are all described in the
 
 ## License
 
-MIT — see [LICENSE](https://github.com/nvlang/ankify/blob/main/LICENSE).
+MIT — see [LICENSE](LICENSE).
 
 ## Trademarks
 

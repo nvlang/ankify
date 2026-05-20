@@ -3,7 +3,7 @@
 <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/nvlang/ankify/main/res/dark/logotype.svg">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/nvlang/ankify/main/res/light/logotype.svg">
-    <img alt="Ankify" src="https://raw.githubusercontent.com/nvlang/ankify/main/res/light/logotype.svg" width="33%">
+    <img alt="Ankify Logotype" src="https://raw.githubusercontent.com/nvlang/ankify/main/res/light/logotype.svg" width="33%">
 </picture>
 <br>
 <br>
@@ -15,8 +15,9 @@
 </div>
 <br>
 
-> **Alpha** — Ankify is alpha software under active development. Expect
-> bugs, rough edges, and breaking changes between releases.
+> [!WARNING]
+> `ankify` is alpha software under active development. Expect bugs, rough edges,
+> and breaking changes between releases.
 
 Ankify lets you take notes in [Typst](https://typst.app) the way you normally
 would and, with very little extra effort, generate an [Anki](https://apps.ankiweb.net)
