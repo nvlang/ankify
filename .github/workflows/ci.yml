@@ -73,7 +73,11 @@ jobs:
           dest="typst-packages/packages/preview/ankify/${version}"
           mkdir -p "${dest}"
           cp -r ankify/packages/ankify-typst/. "${dest}"
+          # `package-check` resolves `@preview/<name>:<ver>` to
+          # `$PACKAGES_DIR/packages/preview/<name>/<ver>` (with `$GITHUB_WORKSPACE`
+          # then `..` as fallbacks). Point it at the mounted clone root.
           docker run --rm \
-            -v "${{ github.workspace }}/typst-packages/packages:/data" \
+            -e PACKAGES_DIR=/data \
+            -v "${{ github.workspace }}/typst-packages:/data" \
             ghcr.io/typst/package-check:0.4.5 \
             check "@preview/ankify:${version}"
